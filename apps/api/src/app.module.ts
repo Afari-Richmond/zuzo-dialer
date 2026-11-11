@@ -8,7 +8,11 @@ import { TenantsModule } from './modules/platform/tenants/tenants.module';
 import { PlatformAdminsModule } from './modules/platform/platform-admins/platform-admins.module';
 import { PlatformStatsModule } from './modules/platform/platform-stats/platform-stats.module';
 import { VoiceModule } from './modules/voice/voice.module';
+import { OutboundDialerModule } from './modules/voice/outbound-dialer.module';
 import { TelephonyCredentialsModule } from './modules/tenant/telephony-credentials/telephony-credentials.module';
+import { DncModule } from './modules/tenant/dnc/dnc.module';
+import { CampaignsModule } from './modules/tenant/campaigns/campaigns.module';
+import { ContactsModule } from './modules/tenant/contacts/contacts.module';
 
 @Module({
   imports: [
@@ -21,7 +25,11 @@ import { TelephonyCredentialsModule } from './modules/tenant/telephony-credentia
     PlatformAdminsModule,
     PlatformStatsModule,
     VoiceModule,
+    OutboundDialerModule,
     TelephonyCredentialsModule,
+    DncModule,
+    CampaignsModule,
+    ContactsModule,
   ],
 })
 export class AppModule {}

@@ -33,3 +33,58 @@ export const authLoginScopeEnum = pgEnum('auth_login_scope', [
   'platform',
   'tenant',
 ]);
+
+export const campaignStatusEnum = pgEnum('campaign_status', [
+  'draft',
+  'scheduled',
+  'running',
+  'locked',
+  'completed',
+  'deleted',
+]);
+
+export const campaignTargetStatusEnum = pgEnum('campaign_target_status', [
+  'queued',
+  'dialing',
+  'answered',
+  'machine',
+  'no_answer',
+  'failed',
+  'completed',
+  'dnc',
+  'outside_window',
+]);
+
+export const campaignOutcomeEnum = pgEnum('campaign_outcome', [
+  'interested',
+  'not_interested',
+  'callback_requested',
+  'wrong_number',
+  'converted',
+  'no_decision_yet',
+  'other',
+]);
+
+export const campaignNextStepEnum = pgEnum('campaign_next_step', [
+  'schedule_follow_up',
+  'send_email_sms',
+  'escalate_to_agent',
+  'add_to_dnc',
+  'no_action_needed',
+]);
+
+export const voiceCallDirectionEnum = pgEnum('voice_call_direction', [
+  'inbound',
+  'outbound',
+]);
+
+export const voiceCallStatusEnum = pgEnum('voice_call_status', [
+  'ringing',
+  'in_progress',
+  'completed',
+  'failed',
+  'transferred',
+  'voicemail',
+  'no_answer',
+  'busy',
+]);

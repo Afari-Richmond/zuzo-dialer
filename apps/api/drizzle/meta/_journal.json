@@ -8,6 +8,13 @@
       "when": 1794382279766,
       "tag": "0000_steady_morg",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1794383327866,
+      "tag": "0001_slim_redwing",
+      "breakpoints": true
     }
   ]
 }
