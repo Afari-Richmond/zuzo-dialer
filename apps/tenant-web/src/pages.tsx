@@ -303,7 +303,7 @@ export function UploadPage() {
                   onChange={(e) => setInstantDial(e.target.checked)}
                   className="size-3.5 cursor-pointer rounded border-input accent-primary"
                 />
-                Instant dial (bypass campaigns entirely via LiveHub's Dialout API, ignores
+                Instant dial (bypass campaigns entirely and dial out immediately, ignores
                 the Campaign picker above)
               </label>
             )}
@@ -703,8 +703,8 @@ function CallDetailPanel({
               <p className="mt-1.5 text-sm text-muted-foreground">{row.aiSuggestion.summary}</p>
             )}
             <p className="mt-2 text-[11px] text-muted-foreground/70">
-              LiveHub doesn't expose a word-for-word call transcript via API — this is its
-              AI-generated summary of the conversation.
+              A word-for-word call transcript isn't available — this is an AI-generated
+              summary of the conversation.
             </p>
           </div>
         ) : (

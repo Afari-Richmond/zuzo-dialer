@@ -9,6 +9,13 @@ import { Btn, ErrorBanner, Field, Input, Select, Table, useLoad } from './ui';
  * part of the same app rather than a bolted-on admin panel.
  */
 
+const PROVIDER_LABELS: Record<string, string> = {
+  stub: 'Stub (demo)',
+  twilio: 'Twilio',
+  africastalking: "Africa's Talking",
+  livehub: 'Voice AI (Advanced)',
+};
+
 const PROVIDER_FIELDS: Record<string, { key: string; label: string }[]> = {
   stub: [],
   twilio: [
@@ -74,7 +81,7 @@ export function TelephonySettingsPage() {
                 <option value="stub">Stub (demo, no setup)</option>
                 <option value="twilio">Twilio</option>
                 <option value="africastalking">Africa's Talking</option>
-                <option value="livehub">LiveHub</option>
+                <option value="livehub">Voice AI (Advanced)</option>
               </Select>
             </Field>
           </div>
@@ -111,7 +118,7 @@ export function TelephonySettingsPage() {
           {data.map((c) => (
             <tr key={c.id} className="border-t border-border">
               <td className="px-5 py-3.5 font-medium text-foreground">{c.label}</td>
-              <td className="px-5 py-3.5 text-muted-foreground">{c.provider}</td>
+              <td className="px-5 py-3.5 text-muted-foreground">{PROVIDER_LABELS[c.provider] ?? c.provider}</td>
               <td className="px-5 py-3.5">
                 {c.isActive ? (
                   <span className="inline-flex items-center rounded-full bg-green-50 px-2.5 py-1 text-xs font-medium text-green-700">
@@ -140,37 +147,19 @@ export function TelephonySettingsPage() {
 
       <h2 className="mb-1.5 mt-8 text-sm font-semibold text-foreground">AI Agent</h2>
       <p className="mb-4 text-sm text-muted-foreground">
-        Everything below is read live from your AudioCodes LiveHub account and saved straight
-        back to it — there's no separate local setting.
+        Everything below is read live from your voice AI platform and saved straight back to
+        it — there's no separate local setting.
       </p>
       <AiAgentSection />
-
-      <div className="card-surface mt-6 p-6">
-        <h2 className="mb-1.5 text-sm font-semibold text-foreground">Voice &amp; Speech</h2>
-        <p className="mb-3 text-sm text-muted-foreground">
-          Voice and speech-provider settings — including ElevenLabs and your own cloned voices —
-          are configured per bot connection in the AudioCodes LiveHub dashboard; there's no API
-          for it yet, so this isn't duplicated here.
-        </p>
-        <a
-          href="https://livehub.audiocodes.io/portal/dashboard"
-          target="_blank"
-          rel="noreferrer"
-          className="inline-flex items-center gap-1.5 rounded-full border border-input bg-card px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
-        >
-          Open LiveHub dashboard ↗
-        </a>
-      </div>
     </div>
   );
 }
 
 /**
- * A thin proxy onto LiveHub's AI Agents framework, not a local setting: the
- * agent list, the current model, and the list of available models are all
- * fetched live from AudioCodes every time this mounts, and saving writes
- * straight back to the same LiveHub account via AiAgentService on the API
- * side.
+ * A thin proxy onto the voice AI platform's agent framework, not a local
+ * setting: the agent list, the current model, and the list of available
+ * models are all fetched live every time this mounts, and saving writes
+ * straight back to the same account via AiAgentService on the API side.
  */
 function AiAgentSection() {
   const { data: config, error: configError, loading: configLoading, reload: reloadConfig } = useLoad(
@@ -280,7 +269,7 @@ function AiAgentModelPicker() {
               ))}
             </Select>
           </Field>
-          {saved && <p className="mt-2 text-sm text-green-700">Model saved to AudioCodes.</p>}
+          {saved && <p className="mt-2 text-sm text-green-700">Model saved.</p>}
           <div className="mt-2">
             <Btn type="button" onClick={saveModel} disabled={saving || !llm}>
               {saving ? 'Saving…' : 'Save model'}
