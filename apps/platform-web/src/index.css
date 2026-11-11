@@ -1,6 +1,116 @@
 @import 'tailwindcss';
 
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-card-surface: var(--card-surface);
+  --color-content-background: var(--content-background);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-active: var(--sidebar-active);
+  --color-primary-glow: var(--primary-glow);
+
+  --font-sans: var(--font-sora);
+  --font-heading: var(--font-sora);
+
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.75rem;
+}
+
+:root {
+  --font-sora: 'Sora', system-ui, -apple-system, sans-serif;
+
+  --background: #f4f4f5;
+  --foreground: #111827;
+  --card: #ffffff;
+  --card-foreground: #111827;
+  --card-surface: #fcfcfb;
+  --content-background: #edf0f3;
+
+  /* Teal/emerald accent, matching the call-center dashboard reference. */
+  --primary: #0d9488;
+  --primary-foreground: #ffffff;
+  --primary-glow: #2dd4bf;
+
+  --secondary: #f1f5f4;
+  --secondary-foreground: #111827;
+  --muted: #f1f5f4;
+  --muted-foreground: #6b7280;
+  --accent: #ecfdf7;
+  --accent-foreground: #0d9488;
+
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --success: #22c55e;
+  --success-foreground: #ffffff;
+  --warning: #f59e0b;
+  --warning-foreground: #ffffff;
+
+  --border: #e3e8e7;
+  --input: #e3e8e7;
+  --ring: #0d9488;
+
+  /* Dark icon rail, matching the reference's near-black sidebar against a light shell. */
+  --sidebar: #0b1320;
+  --sidebar-foreground: #e4e9ef;
+  --sidebar-muted: #6b7a8f;
+  --sidebar-active: #123a35;
+
+  /* Outer-page glow behind the floating app shell. */
+  --shell-bg-1: #0b1320;
+  --shell-bg-2: #0f2a28;
+  --shell-bg-3: #134e48;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
-  background-color: #f8fafc;
-  color: #0f172a;
+  margin: 0;
+  font-family: var(--font-sans);
+  background: var(--color-background);
+  color: var(--color-foreground);
+}
+
+.card-surface {
+  background: var(--color-card-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-xl);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Outer page: dark-to-teal glow the floating app shell sits on, matching the reference. */
+.app-shell-bg {
+  background:
+    radial-gradient(60% 50% at 8% 0%, var(--shell-bg-3) 0%, transparent 60%),
+    radial-gradient(50% 45% at 0% 35%, var(--shell-bg-2) 0%, transparent 65%),
+    var(--shell-bg-1);
 }

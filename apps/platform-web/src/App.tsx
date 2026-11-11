@@ -1,80 +1,198 @@
-import { useEffect, useState } from 'react';
-import { auth, type PlatformActor } from './api';
-import { navigate } from './nav';
-import { Button } from './ui';
-import { LoginPage } from './pages/LoginPage';
+import { useEffect, useState, type FormEvent } from 'react';
+import { Building2, LogOut, ShieldCheck } from 'lucide-react';
+import { ApiError, auth } from './api';
 import { TenantsPage } from './pages/TenantsPage';
 import { PlatformAdminsPage } from './pages/PlatformAdminsPage';
+import { navigate } from './nav';
+import { Btn, ErrorBanner, Field, Input } from './ui';
 
-const NAV_ITEMS = [
-  { path: '/super-admin/tenants', label: 'Tenants' },
-  { path: '/super-admin/admins', label: 'Platform Admins' },
-];
+const NAV = [
+  { id: 'tenants', label: 'Tenants', icon: Building2 },
+  { id: 'admins', label: 'Platform admins', icon: ShieldCheck },
+] as const;
+
+type PageId = (typeof NAV)[number]['id'];
+
+function routeFromPath(): PageId {
+  const raw = window.location.pathname.replace(/^\/super-admin\/?/, '') || 'tenants';
+  return (NAV.find((n) => n.id === raw)?.id ?? 'tenants') as PageId;
+}
 
 export function App() {
-  const [actor, setActor] = useState<PlatformActor | null | 'loading'>('loading');
-  const [path, setPath] = useState(window.location.pathname);
+  const [authed, setAuthed] = useState<boolean | null>(null);
+  const [page, setPage] = useState<PageId>(routeFromPath);
 
   useEffect(() => {
     auth
       .me()
-      .then(setActor)
-      .catch(() => setActor(null));
+      .then(() => setAuthed(true))
+      .catch(() => setAuthed(false));
   }, []);
 
   useEffect(() => {
-    const onPop = () => setPath(window.location.pathname);
+    const onPop = () => setPage(routeFromPath());
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  if (actor === 'loading') return null;
+  function go(id: PageId) {
+    navigate(`/super-admin/${id}`);
+    setPage(id);
+  }
 
-  if (!actor) {
+  if (authed === null) {
     return (
-      <LoginPage
-        onLoggedIn={() => {
-          auth.me().then(setActor);
-          navigate('/super-admin/tenants');
+      <div className="flex min-h-full items-center justify-center">
+        <p className="text-sm text-muted-foreground">Checking session…</p>
+      </div>
+    );
+  }
+  if (!authed) {
+    return (
+      <Login
+        onOk={() => {
+          setAuthed(true);
+          go('tenants');
         }}
       />
     );
   }
 
+  const active = NAV.find((n) => n.id === page)!;
+
   return (
-    <div className="flex min-h-screen">
-      <aside className="w-56 shrink-0 border-r border-slate-200 bg-white px-4 py-6">
-        <p className="mb-6 px-2 text-sm font-semibold text-slate-900">zuzo-dialer / admin</p>
-        <nav className="space-y-1">
-          {NAV_ITEMS.map((item) => (
-            <button
-              key={item.path}
-              onClick={() => navigate(item.path)}
-              className={`block w-full rounded-md px-2 py-1.5 text-left text-sm font-medium ${
-                path === item.path ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
-              }`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </nav>
-        <div className="mt-8 border-t border-slate-200 pt-4">
-          <p className="px-2 text-xs text-slate-400">Signed in as platform admin</p>
-          <Button
-            variant="ghost"
-            className="mt-1 w-full justify-start"
-            onClick={async () => {
-              await auth.logout();
-              setActor(null);
-            }}
-          >
-            Sign out
-          </Button>
+    <div className="app-shell-bg flex min-h-screen items-start justify-center p-0 sm:p-4 lg:p-8">
+      <div className="flex min-h-screen w-full max-w-[90rem] overflow-hidden bg-card sm:min-h-[calc(100vh-4rem)] sm:rounded-[2rem] sm:shadow-[0_24px_64px_rgba(5,15,25,0.35)]">
+        <aside className="hidden w-20 shrink-0 bg-sidebar lg:flex xl:w-64">
+          <div className="sticky top-0 flex max-h-screen w-full flex-col overflow-y-auto px-3 py-6 xl:px-4">
+            <div className="mb-8 flex items-center justify-center gap-3 px-1 xl:justify-start">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
+                Z
+              </div>
+              <div className="hidden min-w-0 xl:block">
+                <div className="truncate text-xs font-medium uppercase tracking-wide text-primary-glow">
+                  ZuZo Insure
+                </div>
+                <div className="truncate text-sm font-semibold text-sidebar-foreground">
+                  Admin
+                </div>
+              </div>
+            </div>
+
+            <nav className="flex flex-col gap-1.5">
+              {NAV.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  title={n.label}
+                  onClick={() => go(n.id)}
+                  className={`flex cursor-pointer items-center justify-center gap-3 rounded-xl px-0 py-2.5 text-left text-sm font-medium transition-colors xl:justify-start xl:px-3 ${
+                    page === n.id
+                      ? 'bg-sidebar-active text-primary-glow'
+                      : 'text-sidebar-muted hover:bg-white/5 hover:text-sidebar-foreground'
+                  }`}
+                >
+                  <n.icon className="size-[18px] shrink-0" />
+                  <span className="hidden truncate xl:inline">{n.label}</span>
+                </button>
+              ))}
+            </nav>
+
+            <div className="mt-auto pt-4">
+              <button
+                type="button"
+                title="Sign out"
+                onClick={() => auth.logout().then(() => setAuthed(false))}
+                className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl px-0 py-2.5 text-left text-sm font-medium text-sidebar-muted transition-colors hover:bg-white/5 hover:text-sidebar-foreground xl:justify-start xl:px-3"
+              >
+                <LogOut className="size-[18px] shrink-0" />
+                <span className="hidden xl:inline">Sign out</span>
+              </button>
+            </div>
+          </div>
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col bg-content-background">
+          <header className="hidden items-center justify-between bg-card px-8 py-5 lg:flex">
+            <h1 className="font-heading text-lg font-bold text-foreground">{active.label}</h1>
+          </header>
+          <main className="min-w-0 flex-1 px-4 py-6 lg:px-8 lg:py-8">
+            {page === 'admins' ? <PlatformAdminsPage /> : <TenantsPage />}
+          </main>
         </div>
-      </aside>
-      <main className="flex-1 px-8 py-6">
-        {path === '/super-admin/admins' ? <PlatformAdminsPage /> : <TenantsPage />}
-      </main>
+      </div>
+    </div>
+  );
+}
+
+function Login({ onOk }: { onOk: () => void }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await auth.login(email, password);
+      onOk();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Could not sign in';
+      setError(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="app-shell-bg flex min-h-full items-center justify-center p-6">
+      <form
+        onSubmit={submit}
+        className="w-full max-w-sm rounded-[1.75rem] bg-card p-8 shadow-[0_24px_64px_rgba(5,15,25,0.35)]"
+      >
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
+            Z
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-primary">
+              ZuZo Insure
+            </div>
+            <div className="text-sm font-semibold text-foreground">Admin</div>
+          </div>
+        </div>
+        <h1 className="mb-1 font-heading text-xl font-bold text-foreground">Sign in</h1>
+        <p className="mb-5 text-sm text-muted-foreground">
+          Super-admin console — manage tenants across the platform.
+        </p>
+        <ErrorBanner error={error} />
+        <div className={`grid gap-4 ${error ? 'mt-3' : ''}`}>
+          <Field label="Email">
+            <Input
+              type="email"
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoFocus
+            />
+          </Field>
+          <Field label="Password">
+            <Input
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </Field>
+        </div>
+        <Btn className="mt-5 w-full" type="submit" disabled={busy}>
+          {busy ? 'Signing in…' : 'Sign in'}
+        </Btn>
+      </form>
     </div>
   );
 }

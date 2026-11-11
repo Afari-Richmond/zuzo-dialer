@@ -1,163 +1,120 @@
-import { useEffect, useState } from 'react';
-import { ApiError, stats as statsApi, tenants as tenantsApi, type PlatformStats, type Tenant } from '../api';
-import { Badge, Button, Card, EmptyState, Input, PageHeader, statusTone } from '../ui';
+import { useState, type FormEvent } from 'react';
+import { ApiError, stats as statsApi, tenants as tenantsApi, type Tenant } from '../api';
+import { Btn, ErrorBanner, Field, Input, StatCard, StatusBadge, Table, useLoad } from '../ui';
 
 export function TenantsPage() {
-  const [list, setList] = useState<Tenant[] | null>(null);
-  const [overview, setOverview] = useState<PlatformStats | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const { data: list, error, loading, reload } = useLoad(
+    () => tenantsApi.list().then((d) => d.tenants),
+    'tenants',
+  );
+  const { data: overview } = useLoad(() => statsApi.overview(), 'platform-stats', 15000);
   const [showCreate, setShowCreate] = useState(false);
-
-  async function refresh() {
-    try {
-      const [{ tenants }, stats] = await Promise.all([tenantsApi.list(), statsApi.overview()]);
-      setList(tenants);
-      setOverview(stats);
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to load tenants');
-    }
-  }
-
-  useEffect(() => {
-    refresh();
-  }, []);
 
   return (
     <div>
-      <PageHeader title="Tenants" actions={<Button onClick={() => setShowCreate(true)}>New tenant</Button>} />
-      {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+      <div className="mb-6 flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">Manage every tenant on the platform.</p>
+        <Btn onClick={() => setShowCreate((v) => !v)}>{showCreate ? 'Cancel' : 'New tenant'}</Btn>
+      </div>
+
       {overview && (
-        <Card className="mb-4 p-4">
-          <div className="flex flex-wrap gap-6 text-sm">
-            <Stat label="Total tenants" value={overview.tenants.total} />
-            <Stat label="Active" value={overview.tenants.active} />
-            <Stat label="Trial" value={overview.tenants.trial} />
-            <Stat label="Suspended" value={overview.tenants.suspended} />
-            <Stat label="Tenant users" value={overview.tenantUsers.total} />
-            <Stat label="Active users" value={overview.tenantUsers.active} />
-          </div>
-        </Card>
+        <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
+          <StatCard label="Total tenants" value={overview.tenants.total} color="gray" />
+          <StatCard label="Active" value={overview.tenants.active} color="green" />
+          <StatCard label="Trial" value={overview.tenants.trial} color="blue" />
+          <StatCard label="Suspended" value={overview.tenants.suspended} color="red" />
+        </div>
       )}
+
       {showCreate && (
         <CreateTenantForm
           onCreated={() => {
             setShowCreate(false);
-            refresh();
+            reload();
           }}
-          onCancel={() => setShowCreate(false)}
         />
       )}
-      <Card>
-        {list === null ? (
-          <EmptyState>Loading…</EmptyState>
-        ) : list.length === 0 ? (
-          <EmptyState>No tenants yet.</EmptyState>
-        ) : (
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-                <th className="px-4 py-2">Name</th>
-                <th className="px-4 py-2">Slug</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2">Created</th>
-                <th className="px-4 py-2" />
-              </tr>
-            </thead>
-            <tbody>
-              {list.map((t) => (
-                <tr key={t.id} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                  <td className="px-4 py-2.5 font-medium text-slate-900">{t.name}</td>
-                  <td className="px-4 py-2.5 text-slate-500">{t.slug}</td>
-                  <td className="px-4 py-2.5">
-                    <Badge tone={statusTone(t.status)}>{t.status}</Badge>
-                  </td>
-                  <td className="px-4 py-2.5 text-slate-500">{new Date(t.createdAt).toLocaleDateString()}</td>
-                  <td className="px-4 py-2.5 text-right">
-                    {t.status === 'suspended' ? (
-                      <Button
-                        variant="secondary"
-                        onClick={async () => {
-                          await tenantsApi.activate(t.id);
-                          refresh();
-                        }}
-                      >
-                        Activate
-                      </Button>
-                    ) : (
-                      <Button
-                        variant="secondary"
-                        onClick={async () => {
-                          await tenantsApi.suspend(t.id);
-                          refresh();
-                        }}
-                      >
-                        Suspend
-                      </Button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </Card>
+
+      {loading && !list && <p className="text-sm text-muted-foreground">Loading…</p>}
+      <ErrorBanner error={error} />
+      {list && list.length === 0 && (
+        <p className="p-8 text-center text-sm text-muted-foreground">No tenants yet.</p>
+      )}
+      {list && list.length > 0 && (
+        <Table headers={['Name', 'Slug', 'Status', 'Created', '']}>
+          {list.map((t) => (
+            <TenantRow key={t.id} tenant={t} onChanged={reload} />
+          ))}
+        </Table>
+      )}
     </div>
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function TenantRow({ tenant, onChanged }: { tenant: Tenant; onChanged: () => void }) {
+  const [busy, setBusy] = useState(false);
+
+  function toggle() {
+    setBusy(true);
+    const call = tenant.status === 'suspended' ? tenantsApi.activate(tenant.id) : tenantsApi.suspend(tenant.id);
+    call.then(onChanged).finally(() => setBusy(false));
+  }
+
   return (
-    <div>
-      <p className="text-xs text-slate-500">{label}</p>
-      <p className="text-base font-semibold text-slate-900">{value}</p>
-    </div>
+    <tr className="border-t border-border hover:bg-secondary">
+      <td className="px-5 py-3.5 font-medium text-foreground">{tenant.name}</td>
+      <td className="px-5 py-3.5 text-muted-foreground">{tenant.slug}</td>
+      <td className="px-5 py-3.5">
+        <StatusBadge status={tenant.status} />
+      </td>
+      <td className="px-5 py-3.5 text-muted-foreground">{new Date(tenant.createdAt).toLocaleDateString()}</td>
+      <td className="px-5 py-3.5 text-right">
+        <Btn kind={tenant.status === 'suspended' ? 'primary' : 'danger'} onClick={toggle} disabled={busy}>
+          {busy ? '…' : tenant.status === 'suspended' ? 'Activate' : 'Suspend'}
+        </Btn>
+      </td>
+    </tr>
   );
 }
 
-function CreateTenantForm({ onCreated, onCancel }: { onCreated: () => void; onCancel: () => void }) {
+function CreateTenantForm({ onCreated }: { onCreated: () => void }) {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
-  async function submit(e: React.FormEvent) {
+  function submit(e: FormEvent) {
     e.preventDefault();
     setSaving(true);
     setError(null);
-    try {
-      await tenantsApi.create({ name, slug });
-      onCreated();
-    } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Failed to create tenant');
-    } finally {
-      setSaving(false);
-    }
+    tenantsApi
+      .create({ name, slug })
+      .then(onCreated)
+      .catch((err: Error) => setError(err instanceof ApiError ? err.message : err.message))
+      .finally(() => setSaving(false));
   }
 
   return (
-    <Card className="mb-4 p-4">
-      <form onSubmit={submit} className="flex flex-wrap items-end gap-3">
-        <div className="min-w-[220px] flex-1">
-          <label className="mb-1 block text-xs font-medium text-slate-600">Name</label>
+    <form onSubmit={submit} className="card-surface mb-6 flex flex-wrap items-end gap-3 p-6">
+      <div className="min-w-48 flex-1">
+        <Field label="Name">
           <Input required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
-        </div>
-        <div className="min-w-[220px] flex-1">
-          <label className="mb-1 block text-xs font-medium text-slate-600">Slug</label>
+        </Field>
+      </div>
+      <div className="min-w-48 flex-1">
+        <Field label="Slug">
           <Input
             required
             value={slug}
             onChange={(e) => setSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))}
             placeholder="e.g. acme"
           />
-        </div>
-        <Button type="submit" disabled={saving}>
-          Create
-        </Button>
-        <Button type="button" variant="ghost" onClick={onCancel}>
-          Cancel
-        </Button>
-      </form>
-      {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
-    </Card>
+        </Field>
+      </div>
+      <Btn type="submit" disabled={saving}>
+        {saving ? 'Creating…' : 'Create'}
+      </Btn>
+      <ErrorBanner error={error} />
+    </form>
   );
 }
