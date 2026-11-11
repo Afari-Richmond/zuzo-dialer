@@ -4,7 +4,7 @@ import { and, eq } from 'drizzle-orm';
 import { DRIZZLE } from '../../db/database.module';
 import type { Database } from '../../db/client';
 import { tenantTelephonyCredentials } from '../../db/schema';
-import { serviceUnavailable } from '../../common/errors';
+import { badRequest, serviceUnavailable } from '../../common/errors';
 import { CredentialsCryptoService } from './credentials-crypto.service';
 import { StubAdapter } from './adapters/stub.adapter';
 import { TwilioAdapter } from './adapters/twilio.adapter';
@@ -34,6 +34,21 @@ export class VoiceAdapterFactoryService {
 
   invalidate(tenantId: string): void {
     this.cache.delete(tenantId);
+  }
+
+  /** Campaign management (create/list/update/lock/delete campaigns, target
+   * list, post-call analysis) is LiveHub-specific — no other provider has an
+   * equivalent concept — so callers that need it ask for the concrete class
+   * and get a clear error if the tenant isn't configured for LiveHub. */
+  async getLiveHubAdapterForTenant(tenantId: string): Promise<LiveHubAdapter> {
+    const adapter = await this.getAdapterForTenant(tenantId);
+    if (!(adapter instanceof LiveHubAdapter)) {
+      throw badRequest(
+        'LIVEHUB_NOT_CONFIGURED',
+        'Campaign management requires this tenant\'s active telephony credential to be LiveHub',
+      );
+    }
+    return adapter;
   }
 
   async getAdapterForTenant(tenantId: string): Promise<VoiceProviderAdapter> {

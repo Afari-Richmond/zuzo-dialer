@@ -1,13 +1,8 @@
 import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { tenants } from './tenants';
-import { campaigns } from './campaigns';
 
-export const campaignReports = pgTable('campaign_reports', {
-  campaignId: uuid('campaign_id')
-    .primaryKey()
-    .references(() => campaigns.id, { onDelete: 'cascade' }),
-  // Denormalized on purpose, so every tenant-scoped table stays directly
-  // filterable by tenantId without a join up to campaigns.
+export const voiceCampaignReports = pgTable('voice_campaign_reports', {
+  liveHubCampaignId: text('live_hub_campaign_id').primaryKey(),
   tenantId: uuid('tenant_id')
     .notNull()
     .references(() => tenants.id, { onDelete: 'cascade' }),

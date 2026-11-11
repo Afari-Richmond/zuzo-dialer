@@ -1,90 +1,270 @@
-import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes } from 'react';
+import {
+  forwardRef,
+  useEffect,
+  useState,
+  type ButtonHTMLAttributes,
+  type FormEvent,
+  type InputHTMLAttributes,
+  type ReactNode,
+  type SelectHTMLAttributes,
+  type TextareaHTMLAttributes,
+} from 'react';
 
-export function Button({
-  variant = 'primary',
-  className = '',
-  ...props
-}: ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' | 'ghost' }) {
-  const styles = {
-    primary: 'bg-indigo-600 text-white hover:bg-indigo-500 disabled:bg-indigo-300',
-    secondary: 'bg-white text-slate-700 border border-slate-300 hover:bg-slate-50',
-    danger: 'bg-red-600 text-white hover:bg-red-500 disabled:bg-red-300',
-    ghost: 'text-slate-600 hover:bg-slate-100',
-  }[variant];
+export function phonesToText(phones: string[]) {
+  return phones.join(', ');
+}
+
+export function textToPhones(text: string) {
+  return text
+    .split(/[,;\n]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export function Field({
+  label,
+  children,
+}: {
+  label: string;
+  children: ReactNode;
+}) {
   return (
-    <button
-      className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium transition disabled:cursor-not-allowed ${styles} ${className}`}
-      {...props}
-    />
+    <label className="block text-sm">
+      <span className="mb-1.5 block font-medium text-foreground">{label}</span>
+      {children}
+    </label>
   );
 }
 
-export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      {...props}
-      className={`w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${props.className ?? ''}`}
-    />
-  );
-}
+const fieldClass =
+  'w-full rounded-full border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring';
+
+export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(
+  function Input(props, ref) {
+    return (
+      <input
+        {...props}
+        ref={ref}
+        className={`${fieldClass} ${props.className ?? ''}`}
+      />
+    );
+  },
+);
 
 export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select
+    <select {...props} className={`${fieldClass} ${props.className ?? ''}`} />
+  );
+}
+
+export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return (
+    <textarea {...props} className={`${fieldClass} ${props.className ?? ''}`} />
+  );
+}
+
+export function Btn({
+  children,
+  kind = 'primary',
+  ...props
+}: ButtonHTMLAttributes<HTMLButtonElement> & {
+  kind?: 'primary' | 'ghost' | 'danger';
+}) {
+  const cls =
+    kind === 'danger'
+      ? 'bg-destructive/10 text-destructive hover:bg-destructive/20'
+      : kind === 'ghost'
+        ? 'border border-input bg-background text-foreground hover:bg-secondary'
+        : 'bg-primary text-primary-foreground hover:bg-primary/90';
+  return (
+    <button
       {...props}
-      className={`w-full rounded-md border border-slate-300 px-3 py-1.5 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500 ${props.className ?? ''}`}
-    />
-  );
-}
-
-export function Card({ children, className = '' }: { children: ReactNode; className?: string }) {
-  return <div className={`rounded-lg border border-slate-200 bg-white shadow-sm ${className}`}>{children}</div>;
-}
-
-export function Badge({ children, tone = 'slate' }: { children: ReactNode; tone?: string }) {
-  const tones: Record<string, string> = {
-    slate: 'bg-slate-100 text-slate-700',
-    green: 'bg-emerald-100 text-emerald-700',
-    red: 'bg-red-100 text-red-700',
-    amber: 'bg-amber-100 text-amber-700',
-    blue: 'bg-blue-100 text-blue-700',
-  };
-  return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${tones[tone] ?? tones.slate}`}>
+      className={`cursor-pointer rounded-full px-4 py-2.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${cls} ${props.className ?? ''}`}
+    >
       {children}
-    </span>
+    </button>
   );
 }
 
-export function statusTone(status: string): string {
-  switch (status) {
-    case 'completed':
-    case 'active':
-    case 'running':
-      return 'green';
-    case 'failed':
-    case 'suspended':
-      return 'red';
-    case 'dnc':
-    case 'outside_window':
-      return 'amber';
-    case 'dialing':
-    case 'queued':
-      return 'blue';
-    default:
-      return 'slate';
-  }
+/** A labeled two-state switch, e.g. AudioCodes' own "Unlock ⟷ Lock" control. */
+export function Toggle({
+  checked,
+  onChange,
+  offLabel,
+  onLabel,
+}: {
+  checked: boolean;
+  onChange: (checked: boolean) => void;
+  offLabel: string;
+  onLabel: string;
+}) {
+  return (
+    <label className="flex w-fit cursor-pointer items-center gap-2.5 text-sm font-medium text-foreground">
+      <span className={checked ? 'text-muted-foreground' : ''}>{offLabel}</span>
+      <span
+        role="switch"
+        aria-checked={checked}
+        onClick={() => onChange(!checked)}
+        className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors ${
+          checked ? 'bg-primary' : 'bg-secondary'
+        }`}
+      >
+        <span
+          className={`inline-block size-4 transform rounded-full bg-card shadow transition-transform ${
+            checked ? 'translate-x-6' : 'translate-x-1'
+          }`}
+        />
+      </span>
+      <span className={!checked ? 'text-muted-foreground' : ''}>{onLabel}</span>
+    </label>
+  );
 }
 
-export function PageHeader({ title, actions }: { title: string; actions?: ReactNode }) {
+export function ErrorBanner({ error }: { error: string | null }) {
+  if (!error) return null;
   return (
-    <div className="mb-6 flex items-center justify-between">
-      <h1 className="text-xl font-semibold text-slate-900">{title}</h1>
-      <div className="flex gap-2">{actions}</div>
+    <p className="rounded-xl bg-destructive/10 px-3.5 py-2.5 text-sm text-destructive">
+      {error}
+    </p>
+  );
+}
+
+export function useLoad<T>(fn: () => Promise<T>, key = '', pollMs?: number) {
+  const [data, setData] = useState<T | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const reload = () => {
+    setLoading(true);
+    fn()
+      .then((d) => {
+        setData(d);
+        setError(null);
+      })
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  };
+  useEffect(() => {
+    setLoading(true);
+    let cancelled = false;
+    const fetchQuietly = () =>
+      fn()
+        .then((d) => {
+          if (cancelled) return;
+          setData(d);
+          setError(null);
+        })
+        .catch((e: Error) => {
+          if (!cancelled) setError(e.message);
+        })
+        .finally(() => {
+          if (!cancelled) setLoading(false);
+        });
+    fetchQuietly();
+    if (!pollMs) return () => {
+      cancelled = true;
+    };
+    const timer = setInterval(fetchQuietly, pollMs);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [key, pollMs]);
+  return { data, error, loading, reload, setData };
+}
+
+export function SearchForm({
+  onSearch,
+}: {
+  onSearch: (q: string) => void;
+}) {
+  const [q, setQ] = useState('');
+  return (
+    <form
+      className="mb-4 flex gap-2"
+      onSubmit={(e: FormEvent) => {
+        e.preventDefault();
+        onSearch(q);
+      }}
+    >
+      <Input
+        value={q}
+        onChange={(e) => setQ(e.target.value)}
+        placeholder="Search"
+      />
+      <Btn type="submit">Search</Btn>
+    </form>
+  );
+}
+
+export function Table({
+  headers,
+  children,
+}: {
+  headers: string[];
+  children: ReactNode;
+}) {
+  return (
+    <div className="overflow-x-auto rounded-xl border border-border bg-card">
+      <table className="min-w-full text-left text-sm">
+        <thead className="text-muted-foreground">
+          <tr>
+            {headers.map((h) => (
+              <th key={h} className="px-5 py-3.5 text-xs font-medium uppercase tracking-wide">
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>{children}</tbody>
+      </table>
     </div>
   );
 }
 
-export function EmptyState({ children }: { children: ReactNode }) {
-  return <div className="px-4 py-12 text-center text-sm text-slate-500">{children}</div>;
+const STAT_COLOR_CLASSES = {
+  blue: 'border-teal-100 bg-teal-50',
+  green: 'border-green-100 bg-green-50',
+  amber: 'border-amber-100 bg-amber-50',
+  red: 'border-red-100 bg-red-50',
+  gray: 'border-border bg-secondary',
+} as const;
+
+export function StatCard({
+  label,
+  value,
+  color = 'gray',
+}: {
+  label: string;
+  value: string | number;
+  color?: keyof typeof STAT_COLOR_CLASSES;
+}) {
+  return (
+    <div className={`rounded-xl border p-5 ${STAT_COLOR_CLASSES[color]}`}>
+      <p className="mb-1.5 text-xs font-medium text-muted-foreground">{label}</p>
+      <div className="tabular-nums text-2xl font-bold text-foreground">{value}</div>
+    </div>
+  );
+}
+
+const STATUS_BADGE_CLASSES: Record<string, string> = {
+  queued: 'bg-secondary text-muted-foreground',
+  dialing: 'bg-amber-50 text-amber-700',
+  answered: 'bg-teal-50 text-teal-700',
+  machine: 'bg-teal-50 text-teal-700',
+  completed: 'bg-green-50 text-green-700',
+  no_answer: 'bg-secondary text-muted-foreground',
+  failed: 'bg-red-50 text-destructive',
+  dnc: 'bg-red-50 text-destructive',
+  outside_window: 'bg-secondary text-muted-foreground',
+};
+
+export function StatusBadge({ status }: { status: string }) {
+  const cls = STATUS_BADGE_CLASSES[status] ?? 'bg-secondary text-muted-foreground';
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${cls}`}
+    >
+      {status.replace(/_/g, ' ')}
+    </span>
+  );
 }

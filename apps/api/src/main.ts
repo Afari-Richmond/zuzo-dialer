@@ -40,7 +40,7 @@ async function bootstrap() {
 
   const tenantWebRoot = join(__dirname, '..', '..', 'tenant-web', 'dist');
   if (existsSync(join(tenantWebRoot, 'index.html'))) {
-    serveSpa(app, tenantWebRoot, '/app/', logger);
+    serveSpa(app, tenantWebRoot, '/outreach/', logger);
   } else {
     logger.warn(`tenant-web/dist not found at ${tenantWebRoot} — run \`npm run build -w apps/tenant-web\``);
   }

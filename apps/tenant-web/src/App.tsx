@@ -1,100 +1,228 @@
-import { useEffect, useState } from 'react';
-import { auth, type TenantActor } from './api';
+import { useEffect, useState, type FormEvent } from 'react';
+import { LogOut, Megaphone, PhoneOff, Radio, Settings, UploadCloud, Users } from 'lucide-react';
+import { ApiError, api } from './api';
+import {
+  AttemptsPage,
+  CampaignReportPage,
+  CampaignsPage,
+  DoNotCallPage,
+  UploadPage,
+} from './pages';
+import { TeamPage, TelephonySettingsPage } from './extra-pages';
 import { navigate } from './nav';
-import { Button } from './ui';
-import { LoginPage } from './pages/LoginPage';
-import { CampaignsPage } from './pages/CampaignsPage';
-import { CampaignDetailPage } from './pages/CampaignDetailPage';
-import { DncPage } from './pages/DncPage';
-import { CredentialsPage } from './pages/CredentialsPage';
-import { TeamPage } from './pages/TeamPage';
+import { Btn, ErrorBanner, Field, Input } from './ui';
 
-const NAV_ITEMS = [
-  { path: '/app/campaigns', label: 'Campaigns' },
-  { path: '/app/dnc', label: 'Do Not Call' },
-  { path: '/app/settings/telephony', label: 'Telephony' },
-  { path: '/app/team', label: 'Team' },
-];
+const NAV = [
+  { id: 'upload', label: 'Upload contacts', icon: UploadCloud },
+  { id: 'campaigns', label: 'Campaigns', icon: Megaphone },
+  { id: 'attempts', label: 'Call attempts', icon: Radio },
+  { id: 'dnc', label: 'Do-not-call', icon: PhoneOff },
+  { id: 'settings', label: 'Telephony', icon: Settings },
+  { id: 'team', label: 'Team', icon: Users },
+] as const;
+
+type PageId = (typeof NAV)[number]['id'];
+type Route = { page: PageId } | { page: 'campaign-report'; campaignId: string };
+
+function routeFromPath(): Route {
+  const raw = window.location.pathname.replace(/^\/outreach\/?/, '') || 'upload';
+  const reportMatch = raw.match(/^campaigns\/([^/]+)\/report$/);
+  if (reportMatch) return { page: 'campaign-report', campaignId: reportMatch[1] };
+  return { page: (NAV.find((n) => n.id === raw)?.id ?? 'upload') as PageId };
+}
 
 export function App() {
-  const [actor, setActor] = useState<TenantActor | null | 'loading'>('loading');
-  const [path, setPath] = useState(window.location.pathname);
+  const [authed, setAuthed] = useState<boolean | null>(null);
+  const [route, setRoute] = useState<Route>(routeFromPath);
 
   useEffect(() => {
-    auth
+    api
       .me()
-      .then(setActor)
-      .catch(() => setActor(null));
+      .then(() => setAuthed(true))
+      .catch(() => setAuthed(false));
   }, []);
 
   useEffect(() => {
-    const onPop = () => setPath(window.location.pathname);
+    const onPop = () => setRoute(routeFromPath());
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
-  if (actor === 'loading') return null;
+  function go(id: PageId) {
+    navigate(`/outreach/${id}`);
+    setRoute({ page: id });
+  }
 
-  if (!actor) {
+  if (authed === null) {
     return (
-      <LoginPage
-        onLoggedIn={() => {
-          auth.me().then(setActor);
-          navigate('/app/campaigns');
+      <div className="flex min-h-full items-center justify-center">
+        <p className="text-sm text-muted-foreground">Checking session…</p>
+      </div>
+    );
+  }
+  if (!authed) {
+    return (
+      <Login
+        onOk={() => {
+          setAuthed(true);
+          go('upload');
         }}
       />
     );
   }
 
-  const detailMatch = path.match(/^\/app\/campaigns\/([^/]+)$/);
+  const navId: PageId = route.page === 'campaign-report' ? 'campaigns' : route.page;
+  const active = NAV.find((n) => n.id === navId)!;
 
   return (
-    <div className="flex min-h-screen">
-      <aside className="w-56 shrink-0 border-r border-slate-200 bg-white px-4 py-6">
-        <p className="mb-6 px-2 text-sm font-semibold text-slate-900">zuzo-dialer</p>
-        <nav className="space-y-1">
-          {NAV_ITEMS.map((item) => {
-            const active = path === item.path || (item.path === '/app/campaigns' && path.startsWith('/app/campaigns'));
-            return (
+    <div className="app-shell-bg flex min-h-screen items-start justify-center p-0 sm:p-4 lg:p-8">
+      <div className="flex min-h-screen w-full max-w-[90rem] overflow-hidden bg-card sm:min-h-[calc(100vh-4rem)] sm:rounded-[2rem] sm:shadow-[0_24px_64px_rgba(5,15,25,0.35)]">
+        <aside className="hidden w-20 shrink-0 bg-sidebar lg:flex xl:w-64">
+          <div className="sticky top-0 flex max-h-screen w-full flex-col overflow-y-auto px-3 py-6 xl:px-4">
+            <div className="mb-8 flex items-center justify-center gap-3 px-1 xl:justify-start">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
+                Z
+              </div>
+              <div className="hidden min-w-0 xl:block">
+                <div className="truncate text-xs font-medium uppercase tracking-wide text-primary-glow">
+                  ZuZo Insure
+                </div>
+                <div className="truncate text-sm font-semibold text-sidebar-foreground">
+                  Outreach
+                </div>
+              </div>
+            </div>
+
+            <nav className="flex flex-col gap-1.5">
+              {NAV.map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  title={n.label}
+                  onClick={() => go(n.id)}
+                  className={`flex cursor-pointer items-center justify-center gap-3 rounded-xl px-0 py-2.5 text-left text-sm font-medium transition-colors xl:justify-start xl:px-3 ${
+                    navId === n.id
+                      ? 'bg-sidebar-active text-primary-glow'
+                      : 'text-sidebar-muted hover:bg-white/5 hover:text-sidebar-foreground'
+                  }`}
+                >
+                  <n.icon className="size-[18px] shrink-0" />
+                  <span className="hidden truncate xl:inline">{n.label}</span>
+                </button>
+              ))}
+            </nav>
+
+            <div className="mt-auto pt-4">
               <button
-                key={item.path}
-                onClick={() => navigate(item.path)}
-                className={`block w-full rounded-md px-2 py-1.5 text-left text-sm font-medium ${
-                  active ? 'bg-indigo-50 text-indigo-700' : 'text-slate-600 hover:bg-slate-50'
-                }`}
+                type="button"
+                title="Sign out"
+                onClick={() => api.logout().then(() => setAuthed(false))}
+                className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl px-0 py-2.5 text-left text-sm font-medium text-sidebar-muted transition-colors hover:bg-white/5 hover:text-sidebar-foreground xl:justify-start xl:px-3"
               >
-                {item.label}
+                <LogOut className="size-[18px] shrink-0" />
+                <span className="hidden xl:inline">Sign out</span>
               </button>
-            );
-          })}
-        </nav>
-        <div className="mt-8 border-t border-slate-200 pt-4">
-          <p className="px-2 text-xs text-slate-400">Signed in as {actor.role}</p>
-          <Button
-            variant="ghost"
-            className="mt-1 w-full justify-start"
-            onClick={async () => {
-              await auth.logout();
-              setActor(null);
-            }}
-          >
-            Sign out
-          </Button>
+            </div>
+          </div>
+        </aside>
+
+        <div className="flex min-w-0 flex-1 flex-col bg-content-background">
+          <header className="hidden items-center justify-between bg-card px-8 py-5 lg:flex">
+            <h1 className="font-heading text-lg font-bold text-foreground">
+              {active.label}
+            </h1>
+          </header>
+          <main className="min-w-0 flex-1 px-4 py-6 lg:px-8 lg:py-8">
+            {route.page === 'campaign-report' ? (
+              <CampaignReportPage campaignId={route.campaignId} />
+            ) : route.page === 'attempts' ? (
+              <AttemptsPage />
+            ) : route.page === 'campaigns' ? (
+              <CampaignsPage />
+            ) : route.page === 'dnc' ? (
+              <DoNotCallPage />
+            ) : route.page === 'settings' ? (
+              <TelephonySettingsPage />
+            ) : route.page === 'team' ? (
+              <TeamPage />
+            ) : (
+              <UploadPage />
+            )}
+          </main>
         </div>
-      </aside>
-      <main className="flex-1 px-8 py-6">
-        {detailMatch ? (
-          <CampaignDetailPage id={detailMatch[1]} />
-        ) : path === '/app/dnc' ? (
-          <DncPage />
-        ) : path === '/app/settings/telephony' ? (
-          <CredentialsPage />
-        ) : path === '/app/team' ? (
-          <TeamPage />
-        ) : (
-          <CampaignsPage />
-        )}
-      </main>
+      </div>
+    </div>
+  );
+}
+
+function Login({ onOk }: { onOk: () => void }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await api.login(email, password);
+      onOk();
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : 'Could not sign in';
+      setError(msg);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="app-shell-bg flex min-h-full items-center justify-center p-6">
+      <form
+        onSubmit={submit}
+        className="w-full max-w-sm rounded-[1.75rem] bg-card p-8 shadow-[0_24px_64px_rgba(5,15,25,0.35)]"
+      >
+        <div className="mb-6 flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
+            Z
+          </div>
+          <div>
+            <div className="text-xs font-medium uppercase tracking-wide text-primary">
+              ZuZo Insure
+            </div>
+            <div className="text-sm font-semibold text-foreground">Outreach</div>
+          </div>
+        </div>
+        <h1 className="mb-1 font-heading text-xl font-bold text-foreground">Sign in</h1>
+        <p className="mb-5 text-sm text-muted-foreground">
+          Sign in to your tenant's outreach dashboard.
+        </p>
+        <ErrorBanner error={error} />
+        <div className={`grid gap-4 ${error ? 'mt-3' : ''}`}>
+          <Field label="Email">
+            <Input
+              type="email"
+              autoComplete="username"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              autoFocus
+            />
+          </Field>
+          <Field label="Password">
+            <Input
+              type="password"
+              autoComplete="current-password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+          </Field>
+        </div>
+        <Btn className="mt-5 w-full" type="submit" disabled={busy}>
+          {busy ? 'Signing in…' : 'Sign in'}
+        </Btn>
+      </form>
     </div>
   );
 }

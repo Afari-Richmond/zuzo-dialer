@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, Res, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Req, Res, UseFilters, UseGuards, UseInterceptors } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { TenantAuthService } from './tenant-auth.service';
 import { TenantLoginDto } from './dto/tenant-login.dto';
@@ -6,6 +6,8 @@ import { TENANT_COOKIE, clearSessionCookie, setSessionCookie } from '../../auth/
 import { TenantAuthGuard } from '../../auth/guards/tenant-auth.guard';
 import { CurrentTenantActor } from '../../auth/current-actor.decorator';
 import type { TenantActor } from '../../auth/jwt-types';
+import { ApiExceptionFilter } from '../../../common/filters/http-exception.filter';
+import { ResponseInterceptor } from '../../../common/interceptors/response.interceptor';
 
 function clientIp(req: Request): string {
   const forwarded = req.headers['x-forwarded-for'];
@@ -16,6 +18,8 @@ function clientIp(req: Request): string {
 }
 
 @Controller('tenant/auth')
+@UseInterceptors(ResponseInterceptor)
+@UseFilters(ApiExceptionFilter)
 export class TenantAuthController {
   constructor(private readonly auth: TenantAuthService) {}
 

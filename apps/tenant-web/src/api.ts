@@ -8,8 +8,14 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api/v1${path}`, {
+type Envelope<T> = {
+  success: boolean;
+  data?: T;
+  error?: { code?: string; message?: string };
+};
+
+async function request<T>(base: string, path: string, init?: RequestInit): Promise<T> {
+  const res = await fetch(`/api/v1/${base}${path}`, {
     credentials: 'include',
     ...init,
     headers: {
@@ -19,134 +25,335 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
   });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new ApiError(res.status, body.errorCode || 'ERROR', body.message || 'Request failed');
+  const json = (await res.json()) as Envelope<T>;
+  if (!json.success) {
+    throw new ApiError(
+      res.status,
+      json.error?.code || 'ERROR',
+      json.error?.message || 'Request failed',
+    );
   }
-  if (res.status === 204) return undefined as T;
-  return (await res.json()) as T;
+  return json.data as T;
 }
 
-// --- auth ---
-export type TenantActor = { tenantId: string; tenantUserId: string; role: 'tenant_admin' | 'agent' };
-
-export const auth = {
-  login: (email: string, password: string) =>
-    request<{ ok: true }>('/tenant/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
-  logout: () => request<{ ok: true }>('/tenant/auth/logout', { method: 'POST' }),
-  me: () => request<TenantActor>('/tenant/auth/me'),
+export type UploadResult = {
+  accepted: number;
+  rejected: number;
+  results: {
+    row: number;
+    phone?: string;
+    accepted: boolean;
+    reason?: string;
+    attempts?: number;
+  }[];
 };
 
-// --- campaigns ---
-export type Campaign = {
+export type OutboundAttempt = {
   id: string;
-  tenantId: string;
-  name: string;
-  credentialId: string;
-  providerCampaignId: string | null;
-  status: 'draft' | 'scheduled' | 'running' | 'locked' | 'completed' | 'deleted';
-  schedule: Record<string, unknown>;
-  defaultBotId: string | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export type CampaignStats = { total: number; queued: number; completed: number; failed: number; dnc: number };
-
-export type CampaignTarget = {
-  id: string;
-  campaignId: string;
+  campaign: string;
   phone: string;
-  name: string | null;
-  reasonNotes: string | null;
-  providerTargetId: string | null;
-  enabled: boolean;
+  reason: string | null;
+  policyNumber: string | null;
   status: string;
   attemptNumber: number;
+  scheduledAt: string;
   startedAt: string | null;
   lastError: string | null;
 };
 
-export type ReportRow = {
+export type Batch = { campaign: string; count: number };
+
+export type MachineDetection = 'Disabled' | 'Disconnect' | 'Notify Answer Machine';
+
+export type Campaign = {
+  campaignID: string;
+  campaignName: string;
+  defaultBotName: string;
+  defaultBotDisplayName: string;
+  maxRetries: number;
+  adminState: 'Locked' | 'Unlocked';
+  detectionCapabilities: {
+    minWaitDurationForAnswer: number;
+    machineDetection: MachineDetection;
+    answerMachineBeepTimeout: number;
+  };
+  schedulerSettings: {
+    maxCps: number;
+    maxConcurrentCalls: number;
+    minDurationBetweenRetries: number;
+    timeZone: string;
+    beginningDate: string;
+    endingDate: string;
+    daysOfWeek: string[];
+    startLocalTime: string;
+    stopLocalTime: string;
+  };
+  status: {
+    campaignStatus: string;
+    targetsEnabled: number;
+    targetsCompleted: number;
+    targetsAnswered: number;
+    targetsFailed: number;
+  };
+};
+
+export type CampaignTarget = {
+  targetID: string;
+  setting: {
+    enabled: boolean;
+    targetNumber: string;
+    botDisplayName: string | null;
+  };
+  status: {
+    status: string;
+    lastFailureReason: string | null;
+    lastCallTime: string | null;
+    numOfRetries: number;
+  };
+};
+
+export type CampaignOutcome =
+  | 'interested'
+  | 'not_interested'
+  | 'callback_requested'
+  | 'wrong_number'
+  | 'converted'
+  | 'no_decision_yet'
+  | 'other';
+
+export type CampaignNextStep =
+  | 'schedule_follow_up'
+  | 'send_email_sms'
+  | 'escalate_to_agent'
+  | 'add_to_dnc'
+  | 'no_action_needed';
+
+export type CampaignReportRow = {
   targetId: string;
   phone: string;
   name: string | null;
-  reasonNotes: string | null;
+  reason: string | null;
   status: string;
-  attemptNumber: number;
-  lastError: string | null;
-  startedAt: string | null;
-  outcome: string | null;
-  nextStep: string | null;
+  lastFailureReason: string | null;
+  lastCallTime: string | null;
+  numOfRetries: number;
+  outcome: CampaignOutcome | null;
+  nextStep: CampaignNextStep | null;
   notes: string | null;
-  loggedAt: string | null;
+  updatedAt: string | null;
+  call: {
+    callId: string;
+    setupTime: string;
+    durationSeconds: number;
+    successful: boolean;
+    terminationDescription: string | null;
+  } | null;
+  aiSuggestion: {
+    outcome: string | null;
+    nextStep: string | null;
+    summary: string | null;
+  } | null;
 };
 
 export type CampaignReport = {
   campaignId: string;
   campaignName: string;
-  totalContacts: number;
-  statusCounts: Record<string, number>;
-  rows: ReportRow[];
-  outcomeCounts: Record<string, number>;
+  summary: CampaignOverview;
+  rows: CampaignReportRow[];
+  outcomeCounts: Partial<Record<CampaignOutcome, number>>;
   reviewedCount: number;
   needsFollowUp: number;
   recommendation: string | null;
 };
 
-export const campaigns = {
-  list: () => request<{ campaigns: Campaign[] }>('/tenant/campaigns'),
-  get: (id: string) => request<{ campaign: Campaign }>(`/tenant/campaigns/${id}`),
-  stats: (id: string) => request<CampaignStats>(`/tenant/campaigns/${id}/stats`),
-  create: (dto: { name: string; credentialId: string }) =>
-    request<{ campaign: Campaign }>('/tenant/campaigns', { method: 'POST', body: JSON.stringify(dto) }),
-  start: (id: string) => request<{ campaign: Campaign }>(`/tenant/campaigns/${id}/start`, { method: 'POST' }),
-  pause: (id: string) => request<{ campaign: Campaign }>(`/tenant/campaigns/${id}/pause`, { method: 'POST' }),
-  remove: (id: string) => request<{ ok: true }>(`/tenant/campaigns/${id}`, { method: 'DELETE' }),
-  drain: (id: string) => request<{ processed: number }>(`/tenant/campaigns/${id}/drain`, { method: 'POST' }),
-  targets: (id: string) => request<{ targets: CampaignTarget[] }>(`/tenant/campaigns/${id}/targets`),
-  setTargetEnabled: (id: string, targetId: string, enabled: boolean) =>
-    request<{ target: CampaignTarget }>(`/tenant/campaigns/${id}/targets/${targetId}`, {
-      method: 'PATCH',
-      body: JSON.stringify({ enabled }),
+export type CreateCampaignInput = {
+  campaignName: string;
+  defaultBotName?: string;
+  timeZone: string;
+  startLocalTime: string;
+  stopLocalTime: string;
+  daysOfWeek: string[];
+  beginningDate: string;
+  endingDate: string;
+  maxCps: number;
+  maxConcurrentCalls: number;
+  maxRetries: number;
+  minDurationBetweenRetries: number;
+  minWaitDurationForAnswer: number;
+  machineDetection: MachineDetection;
+  lockOnCreate?: boolean;
+};
+
+export type UpdateCampaignInput = Omit<CreateCampaignInput, 'campaignName' | 'lockOnCreate'> & {
+  locked: boolean;
+};
+
+export type CampaignOverview = {
+  campaignId: string;
+  campaignName: string;
+  adminState: 'Locked' | 'Unlocked';
+  campaignStatus: string;
+  targetsEnabled: number;
+  targetsCompleted: number;
+  targetsAnswered: number;
+  targetsFailed: number;
+  statistics: {
+    targetStatistics: {
+      enabledTargets: number;
+      disabledTargets: number;
+      completed: {
+        dialerFailure: number;
+        answeredBotFailure: number;
+        answeredBotSuccess: number;
+        answeredSuccess: number;
+      };
+      notCompleted: {
+        notInitiated: number;
+        duringCall: number;
+        rescheduled: number;
+      };
+    };
+    callsStatistics: {
+      totalCallsGenerated: number;
+      callsRescheduled: {
+        noAnswer: number;
+        faxOrAnswerMachine: number;
+        busy: number;
+        declined: number;
+        botConnectivityError: number;
+        systemCAC: number;
+        unspecifiedError: number;
+      };
+    };
+  };
+};
+
+export type CallNowResult = {
+  accepted: boolean;
+  reason?: string;
+  phone?: string;
+  attempt?: OutboundAttempt;
+  dial?: {
+    dialed: boolean;
+    reason?: string;
+    callId?: string;
+    identityPrompt?: string;
+    error?: string;
+  };
+};
+
+export const api = {
+  // Real per-tenant account auth (bcrypt + JWT), not the old shared-password
+  // scheme — the only deliberate deviation from the original app's api.ts.
+  me: () => request<{ role: string }>('tenant/auth', '/me'),
+  login: (email: string, password: string) =>
+    request<{ ok: boolean }>('tenant/auth', '/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
     }),
-  report: (id: string) => request<CampaignReport>(`/tenant/campaigns/${id}/report`),
-  exportReportUrl: (id: string) => `/api/v1/tenant/campaigns/${id}/report/export`,
-  upsertOutcome: (
-    id: string,
-    targetId: string,
-    dto: { outcome?: string; nextStep?: string; notes?: string },
-  ) =>
-    request<{ ok: true }>(`/tenant/campaigns/${id}/targets/${targetId}/outcome`, {
+  logout: () => request<{ ok: boolean }>('tenant/auth', '/logout', { method: 'POST' }),
+
+  upload: (batch: string, file: File, scheduledAt?: string, liveHubCampaignId?: string) => {
+    const form = new FormData();
+    form.append('batch', batch);
+    form.append('file', file);
+    if (scheduledAt) form.append('scheduledAt', scheduledAt);
+    if (liveHubCampaignId) form.append('liveHubCampaignId', liveHubCampaignId);
+    return request<UploadResult>('outreach', '/upload', {
+      method: 'POST',
+      body: form,
+    });
+  },
+  attempts: (campaign?: string, status?: string) =>
+    request<{ attempts: OutboundAttempt[] }>(
+      'outreach',
+      `/attempts?${new URLSearchParams({
+        ...(campaign ? { campaign } : {}),
+        ...(status ? { status } : {}),
+      }).toString()}`,
+    ),
+  batches: () => request<{ batches: Batch[] }>('outreach', '/batches'),
+  campaigns: () => request<{ campaigns: Campaign[] }>('outreach', '/campaigns'),
+  timezones: () =>
+    request<{ timezones: { timezone: string; offset: string }[] }>(
+      'outreach',
+      '/campaigns/timezones',
+    ),
+  bots: () =>
+    request<{ bots: { botName: string; botDisplayName: string }[] }>(
+      'outreach',
+      '/campaigns/bots',
+    ),
+  createCampaign: (input: CreateCampaignInput) =>
+    request<Campaign>('outreach', '/campaigns', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  getCampaign: (id: string) => request<Campaign>('outreach', `/campaigns/${id}`),
+  updateCampaign: (id: string, input: UpdateCampaignInput) =>
+    request<Campaign>('outreach', `/campaigns/${id}`, {
       method: 'PUT',
-      body: JSON.stringify(dto),
+      body: JSON.stringify(input),
     }),
-  setRecommendation: (id: string, recommendation: string) =>
-    request<{ ok: true }>(`/tenant/campaigns/${id}/recommendation`, {
+  campaignStats: (id: string) =>
+    request<CampaignOverview>('outreach', `/campaigns/${id}/stats`),
+  pauseCampaign: (id: string) =>
+    request<{ locked: boolean }>('outreach', `/campaigns/${id}/pause`, { method: 'POST' }),
+  resumeCampaign: (id: string) =>
+    request<{ locked: boolean }>('outreach', `/campaigns/${id}/resume`, { method: 'POST' }),
+  deleteCampaign: (id: string) =>
+    request<{ deleted: boolean }>('outreach', `/campaigns/${id}`, { method: 'DELETE' }),
+  campaignTargets: (id: string) =>
+    request<{ targets: CampaignTarget[] }>('outreach', `/campaigns/${id}/targets`),
+  enableTarget: (campaignId: string, targetId: string) =>
+    request<{ enabled: boolean }>(
+      'outreach',
+      `/campaigns/${campaignId}/targets/${targetId}/enable`,
+      { method: 'POST' },
+    ),
+  disableTarget: (campaignId: string, targetId: string) =>
+    request<{ enabled: boolean }>(
+      'outreach',
+      `/campaigns/${campaignId}/targets/${targetId}/disable`,
+      { method: 'POST' },
+    ),
+  campaignReport: (id: string) => request<CampaignReport>('outreach', `/campaigns/${id}/report`),
+  upsertOutcome: (
+    campaignId: string,
+    targetId: string,
+    input: {
+      phone: string;
+      outcome?: CampaignOutcome;
+      nextStep?: CampaignNextStep;
+      notes?: string;
+    },
+  ) =>
+    request<{ ok: boolean }>('outreach', `/campaigns/${campaignId}/outcomes/${targetId}`, {
+      method: 'PUT',
+      body: JSON.stringify(input),
+    }),
+  setRecommendation: (campaignId: string, recommendation: string) =>
+    request<{ ok: boolean }>('outreach', `/campaigns/${campaignId}/recommendation`, {
       method: 'PUT',
       body: JSON.stringify({ recommendation }),
     }),
-  uploadContacts: (id: string, file: File) => {
-    const form = new FormData();
-    form.append('file', file);
-    return request<{ accepted: number; rejected: number; results: unknown[] }>(
-      `/tenant/campaigns/${id}/contacts/upload`,
-      { method: 'POST', body: form },
-    );
-  },
+  addDnc: (phone: string, reason?: string) =>
+    request<{ phone: string; dnc: boolean }>('outreach', '/dnc', {
+      method: 'POST',
+      body: JSON.stringify({ phone, reason }),
+    }),
+  callNow: (phone: string, reason?: string, liveHubCampaignId?: string, instant?: boolean) =>
+    request<CallNowResult>('outreach', '/call-now', {
+      method: 'POST',
+      body: JSON.stringify({ phone, reason, liveHubCampaignId, instant }),
+    }),
 };
 
-// --- dnc ---
-export type DncEntry = { id: string; phone: string; reason: string | null; source: string; createdAt: string };
+// --- telephony credentials + team: new multitenancy infra with no
+// equivalent in the original single-tenant app (which used one global env-
+// var credential and one shared dashboard password) — same envelope/base
+// pattern as everything above, just a different route prefix. ---
 
-export const dnc = {
-  list: () => request<{ entries: DncEntry[] }>('/tenant/dnc'),
-  add: (phone: string, reason?: string) =>
-    request<{ entry: DncEntry }>('/tenant/dnc', { method: 'POST', body: JSON.stringify({ phone, reason }) }),
-  remove: (id: string) => request<{ ok: true }>(`/tenant/dnc/${id}`, { method: 'DELETE' }),
-};
-
-// --- telephony credentials ---
 export type TelephonyCredential = {
   id: string;
   provider: 'stub' | 'twilio' | 'africastalking' | 'livehub';
@@ -156,17 +363,17 @@ export type TelephonyCredential = {
   updatedAt: string;
 };
 
-export const credentials = {
-  list: () => request<{ credentials: TelephonyCredential[] }>('/tenant/telephony-credentials'),
+export const credentialsApi = {
+  list: () => request<{ credentials: TelephonyCredential[] }>('tenant/telephony-credentials', ''),
   upsert: (dto: { provider: string; label: string; credentials: Record<string, string> }) =>
-    request<{ credential: TelephonyCredential }>('/tenant/telephony-credentials', {
+    request<{ credential: TelephonyCredential }>('tenant/telephony-credentials', '', {
       method: 'PUT',
       body: JSON.stringify(dto),
     }),
-  deactivate: (id: string) => request<{ ok: true }>(`/tenant/telephony-credentials/${id}`, { method: 'DELETE' }),
+  deactivate: (id: string) =>
+    request<{ ok: boolean }>('tenant/telephony-credentials', `/${id}`, { method: 'DELETE' }),
 };
 
-// --- team ---
 export type TeamMember = {
   id: string;
   email: string;
@@ -177,13 +384,16 @@ export type TeamMember = {
   createdAt: string;
 };
 
-export const team = {
-  list: () => request<{ members: TeamMember[] }>('/tenant/team'),
+export const teamApi = {
+  list: () => request<{ members: TeamMember[] }>('tenant/team', ''),
   invite: (dto: { email: string; displayName: string; role: 'tenant_admin' | 'agent' }) =>
-    request<{ user: TeamMember; tempPassword: string }>('/tenant/team/invite', {
+    request<{ user: TeamMember; tempPassword: string }>('tenant/team', '/invite', {
       method: 'POST',
       body: JSON.stringify(dto),
     }),
   update: (id: string, dto: { role?: string; status?: string }) =>
-    request<{ member: TeamMember }>(`/tenant/team/${id}`, { method: 'PATCH', body: JSON.stringify(dto) }),
+    request<{ member: TeamMember }>('tenant/team', `/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(dto),
+    }),
 };

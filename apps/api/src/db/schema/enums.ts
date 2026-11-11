@@ -34,16 +34,7 @@ export const authLoginScopeEnum = pgEnum('auth_login_scope', [
   'tenant',
 ]);
 
-export const campaignStatusEnum = pgEnum('campaign_status', [
-  'draft',
-  'scheduled',
-  'running',
-  'locked',
-  'completed',
-  'deleted',
-]);
-
-export const campaignTargetStatusEnum = pgEnum('campaign_target_status', [
+export const voiceOutboundStatusEnum = pgEnum('voice_outbound_status', [
   'queued',
   'dialing',
   'answered',

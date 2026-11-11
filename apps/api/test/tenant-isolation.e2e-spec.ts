@@ -101,8 +101,10 @@ describe('tenant isolation', () => {
 
     const meRes = await request(server).get('/api/v1/tenant/auth/me').set('Cookie', cookie);
     expect(meRes.status).toBe(200);
-    expect(meRes.body.tenantId).toBe(tenantA.id);
-    expect(meRes.body.tenantId).not.toBe(tenantB.id);
+    // tenant/auth is envelope-wrapped ({success,data}) to match the ported
+    // outreach frontend's api.ts expectations.
+    expect(meRes.body.data.tenantId).toBe(tenantA.id);
+    expect(meRes.body.data.tenantId).not.toBe(tenantB.id);
   });
 
   it('auth: suspending tenant B does not affect tenant A sessions', async () => {

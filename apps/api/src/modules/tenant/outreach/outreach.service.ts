@@ -1,0 +1,436 @@
+import { Inject, Injectable } from '@nestjs/common';
+import { and, desc, eq, sql } from 'drizzle-orm';
+import * as XLSX from 'xlsx';
+import { DRIZZLE } from '../../../db/database.module';
+import type { Database } from '../../../db/client';
+import { voiceCampaignOutcomes, voiceCampaignReports, voiceOutboundAttempts } from '../../../db/schema';
+import { badRequest } from '../../../common/errors';
+import { VoiceAdapterFactoryService } from '../../voice/voice-adapter-factory.service';
+import type { CallRecord, PostCallAnalysisResult } from '../../voice/adapters/livehub.adapter';
+import { OutreachDialService } from './outreach-dial.service';
+import type {
+  CreateCampaignDto,
+  OutreachDncDto,
+  SetRecommendationDto,
+  UpdateCampaignDto,
+  UpsertOutcomeDto,
+} from './dto/outreach.dto';
+
+const MAX_ROWS = 500;
+const PHONE_HEADERS = ['phone', 'phone number', 'mobile', 'mobile number', 'number'];
+const REASON_HEADERS = ['reason', 'notes', 'note', 'call reason', 'reason/notes'];
+const NAME_HEADERS = ['name', 'full name', 'contact name', 'customer name'];
+
+function findKey(row: Record<string, unknown>, candidates: string[]): string | undefined {
+  const keys = Object.keys(row);
+  return candidates
+    .map((cand) => keys.find((k) => k.trim().toLowerCase() === cand))
+    .find((k) => k !== undefined);
+}
+
+/**
+ * Tenant-scoped port of the old single-tenant repo's OutreachService.
+ * Campaign management is LiveHub-only (same as the original — no other
+ * provider has a campaign/target-list concept), obtained per-tenant via
+ * VoiceAdapterFactoryService instead of one global injected instance.
+ * getCampaignReport drops the old customers-table name lookup (no shared
+ * customers table across tenants) in favor of the name captured directly on
+ * the uploaded contact row.
+ */
+@Injectable()
+export class OutreachService {
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly dial: OutreachDialService,
+    private readonly adapterFactory: VoiceAdapterFactoryService,
+  ) {}
+
+  async listCampaigns(tenantId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    return liveHub.listCampaigns();
+  }
+
+  async listTimezones(tenantId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    return liveHub.listTimezones();
+  }
+
+  async listBots(tenantId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    return liveHub.listKnownBots();
+  }
+
+  async createCampaign(tenantId: string, dto: CreateCampaignDto) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    return liveHub.createCampaign({
+      campaignName: dto.campaignName,
+      defaultBotName: dto.defaultBotName,
+      timeZone: dto.timeZone,
+      startLocalTime: dto.startLocalTime,
+      stopLocalTime: dto.stopLocalTime,
+      daysOfWeek: dto.daysOfWeek,
+      beginningDate: dto.beginningDate,
+      endingDate: dto.endingDate,
+      maxCps: dto.maxCps,
+      maxConcurrentCalls: dto.maxConcurrentCalls,
+      maxRetries: dto.maxRetries,
+      minDurationBetweenRetries: dto.minDurationBetweenRetries,
+      minWaitDurationForAnswer: dto.minWaitDurationForAnswer,
+      machineDetection: dto.machineDetection,
+      lockOnCreate: dto.lockOnCreate,
+    });
+  }
+
+  async getCampaignOverview(tenantId: string, campaignId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    return liveHub.getCampaignOverview(campaignId);
+  }
+
+  async getCampaign(tenantId: string, campaignId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    return liveHub.getCampaign(campaignId);
+  }
+
+  async updateCampaign(tenantId: string, campaignId: string, dto: UpdateCampaignDto) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    await liveHub.updateCampaign(campaignId, {
+      defaultBotName: dto.defaultBotName,
+      timeZone: dto.timeZone,
+      startLocalTime: dto.startLocalTime,
+      stopLocalTime: dto.stopLocalTime,
+      daysOfWeek: dto.daysOfWeek,
+      beginningDate: dto.beginningDate,
+      endingDate: dto.endingDate,
+      maxCps: dto.maxCps,
+      maxConcurrentCalls: dto.maxConcurrentCalls,
+      maxRetries: dto.maxRetries,
+      minDurationBetweenRetries: dto.minDurationBetweenRetries,
+      minWaitDurationForAnswer: dto.minWaitDurationForAnswer,
+      machineDetection: dto.machineDetection,
+      locked: dto.locked,
+    });
+    return liveHub.getCampaign(campaignId);
+  }
+
+  async setCampaignLock(tenantId: string, campaignId: string, locked: boolean) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    await liveHub.setCampaignLock(campaignId, locked);
+    return { locked };
+  }
+
+  async deleteCampaign(tenantId: string, campaignId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    await liveHub.deleteCampaign(campaignId);
+    return { deleted: true };
+  }
+
+  async listTargets(tenantId: string, campaignId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    return liveHub.listCampaignTargets(campaignId);
+  }
+
+  async setTargetEnabled(tenantId: string, campaignId: string, targetId: string, enabled: boolean) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    await liveHub.setTargetEnabled(campaignId, targetId, enabled);
+    return { enabled };
+  }
+
+  /**
+   * LiveHub's own botResultMetadata is null on every target we've checked, so
+   * "what happened" is primarily a staff-entered log (voice_campaign_outcomes),
+   * joined here against LiveHub's live target list. Where the old repo looked
+   * up a contact's display name from a shared `customers` table, this uses the
+   * name captured directly on the uploaded contact row instead (no per-tenant
+   * customers table).
+   */
+  async getCampaignReport(tenantId: string, campaignId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const [overview, campaign, targets, outcomeRows, reportRows] = await Promise.all([
+      liveHub.getCampaignOverview(campaignId),
+      liveHub.getCampaign(campaignId),
+      liveHub.listCampaignTargets(campaignId),
+      this.db
+        .select()
+        .from(voiceCampaignOutcomes)
+        .where(
+          and(eq(voiceCampaignOutcomes.tenantId, tenantId), eq(voiceCampaignOutcomes.liveHubCampaignId, campaignId)),
+        ),
+      this.db
+        .select()
+        .from(voiceCampaignReports)
+        .where(and(eq(voiceCampaignReports.tenantId, tenantId), eq(voiceCampaignReports.liveHubCampaignId, campaignId)))
+        .limit(1),
+    ]);
+
+    const schedulerSettings = campaign.schedulerSettings as { beginningDate?: string };
+    const fromISO = `${schedulerSettings.beginningDate ?? '2020-01-01'}T00:00:00.000Z`;
+    const toISO = new Date(Date.now() + 60_000).toISOString();
+    const calls = await liveHub
+      .listCallsForCampaign(campaignId, fromISO, toISO)
+      .catch((): CallRecord[] => []);
+
+    const normalizePhone = (p: string) => p.replace(/\D/g, '');
+    const toLocalPhone = (p: string) => {
+      const digits = normalizePhone(p);
+      if (digits.startsWith('233') && digits.length >= 12) return `0${digits.slice(3)}`;
+      if (digits.length === 9 && !digits.startsWith('0')) return `0${digits}`;
+      return digits;
+    };
+    const callByPhone = new Map<string, (typeof calls)[number]>();
+    for (const c of calls) {
+      const key = normalizePhone(c.calledPhone);
+      if (!key) continue;
+      const existing = callByPhone.get(key);
+      if (!existing || c.setupTime > existing.setupTime) callByPhone.set(key, c);
+    }
+    const conversationIds = [
+      ...new Set(calls.map((c) => c.botConversationId).filter((id): id is string => !!id)),
+    ];
+    const pcaEntries = await Promise.all(
+      conversationIds.map((id) => liveHub.getPostCallAnalysis(id).catch((): PostCallAnalysisResult | null => null)),
+    );
+    const pcaByConversationId = new Map(
+      conversationIds
+        .map((id, i) => [id, pcaEntries[i]] as const)
+        .filter((entry): entry is [string, PostCallAnalysisResult] => !!entry[1]),
+    );
+
+    const targetLocalPhones = [...new Set(targets.map((t) => toLocalPhone(t.setting.targetNumber)))];
+    const attemptRows = targetLocalPhones.length
+      ? await this.db
+          .select({
+            phone: voiceOutboundAttempts.phone,
+            name: voiceOutboundAttempts.name,
+            reason: voiceOutboundAttempts.reason,
+            createdAt: voiceOutboundAttempts.createdAt,
+          })
+          .from(voiceOutboundAttempts)
+          .where(eq(voiceOutboundAttempts.tenantId, tenantId))
+      : [];
+    const byPhone = new Map<string, { name: string | null; reason: string | null; createdAt: Date }>();
+    for (const a of attemptRows) {
+      const existing = byPhone.get(a.phone);
+      if (!existing || a.createdAt > existing.createdAt) {
+        byPhone.set(a.phone, { name: a.name, reason: a.reason, createdAt: a.createdAt });
+      }
+    }
+
+    const outcomeByTarget = new Map(outcomeRows.map((o) => [o.targetId, o]));
+    const rows = targets.map((t) => {
+      const localPhone = toLocalPhone(t.setting.targetNumber);
+      const o = outcomeByTarget.get(t.targetID);
+      const call = callByPhone.get(normalizePhone(t.setting.targetNumber));
+      const pca = call?.botConversationId ? (pcaByConversationId.get(call.botConversationId) ?? null) : null;
+      const contact = byPhone.get(localPhone);
+      return {
+        targetId: t.targetID,
+        phone: t.setting.targetNumber,
+        name: contact?.name ?? null,
+        reason: contact?.reason ?? null,
+        status: t.status.status,
+        lastFailureReason: t.status.lastFailureReason,
+        lastCallTime: t.status.lastCallTime,
+        numOfRetries: t.status.numOfRetries,
+        outcome: o?.outcome ?? null,
+        nextStep: o?.nextStep ?? null,
+        notes: o?.notes ?? null,
+        updatedAt: o?.updatedAt ?? null,
+        call: call
+          ? {
+              callId: call.callId,
+              setupTime: call.setupTime,
+              durationSeconds: call.durationSeconds,
+              successful: call.successful,
+              terminationDescription: call.terminationDescription,
+            }
+          : null,
+        aiSuggestion: pca ? { outcome: pca.outcome, nextStep: pca.nextStep, summary: pca.summary } : null,
+      };
+    });
+
+    const outcomeCounts: Record<string, number> = {};
+    for (const o of outcomeRows) {
+      if (o.outcome) outcomeCounts[o.outcome] = (outcomeCounts[o.outcome] ?? 0) + 1;
+    }
+    const needsFollowUp = outcomeRows.filter((o) => o.nextStep && o.nextStep !== 'no_action_needed').length;
+
+    return {
+      campaignId,
+      campaignName: overview.campaignName,
+      summary: overview,
+      rows,
+      outcomeCounts,
+      reviewedCount: outcomeRows.length,
+      needsFollowUp,
+      recommendation: reportRows[0]?.recommendation ?? null,
+    };
+  }
+
+  async exportCampaignReport(tenantId: string, campaignId: string): Promise<{ filename: string; buffer: Buffer }> {
+    const report = await this.getCampaignReport(tenantId, campaignId);
+    const t = report.summary.statistics.targetStatistics;
+    const responded = t.completed.answeredSuccess + t.completed.answeredBotFailure;
+
+    const summarySheet = XLSX.utils.aoa_to_sheet([
+      ['Campaign', report.campaignName],
+      ['Generated', new Date().toISOString()],
+      [],
+      ['Total contacts', report.summary.targetsEnabled],
+      ['Responded', responded],
+      ['Reviewed', report.reviewedCount],
+      ['Needs follow-up', report.needsFollowUp],
+      [],
+      ['Recommendation', report.recommendation ?? ''],
+    ]);
+    summarySheet['!cols'] = [{ wch: 18 }, { wch: 60 }];
+
+    const callsSheet = XLSX.utils.json_to_sheet(
+      report.rows.map((r) => ({
+        Name: r.name ?? '',
+        Phone: r.phone.replace(/^tel:/, ''),
+        Reason: r.reason ?? '',
+        Date: r.call?.setupTime ?? r.lastCallTime ?? '',
+        'Duration (s)': r.call?.durationSeconds ?? '',
+        Answered: r.call ? (r.call.successful ? 'Yes' : 'No') : '',
+        'LiveHub status': r.status,
+        Outcome: r.outcome ?? '',
+        'Next step': r.nextStep ?? '',
+        Notes: r.notes ?? '',
+        'AI suggested outcome': r.aiSuggestion?.outcome ?? '',
+        'AI suggested next step': r.aiSuggestion?.nextStep ?? '',
+        'AI summary': r.aiSuggestion?.summary ?? '',
+        'Logged at': r.updatedAt ?? '',
+      })),
+    );
+    callsSheet['!cols'] = [
+      { wch: 20 },
+      { wch: 16 },
+      { wch: 40 },
+      { wch: 22 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 16 },
+      { wch: 18 },
+      { wch: 20 },
+      { wch: 40 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 60 },
+      { wch: 22 },
+    ];
+
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+    XLSX.utils.book_append_sheet(workbook, callsSheet, 'Calls');
+
+    const buffer = XLSX.write(workbook, { type: 'buffer', bookType: 'xlsx' }) as Buffer;
+    const safeName = report.campaignName.replace(/[^a-z0-9-]+/gi, '-').replace(/^-+|-+$/g, '');
+    return { filename: `${safeName || 'campaign'}-report.xlsx`, buffer };
+  }
+
+  async upsertOutcome(tenantId: string, campaignId: string, targetId: string, dto: UpsertOutcomeDto) {
+    await this.db
+      .insert(voiceCampaignOutcomes)
+      .values({
+        tenantId,
+        liveHubCampaignId: campaignId,
+        targetId,
+        phone: dto.phone,
+        outcome: dto.outcome,
+        nextStep: dto.nextStep,
+        notes: dto.notes,
+      })
+      .onConflictDoUpdate({
+        target: [voiceCampaignOutcomes.liveHubCampaignId, voiceCampaignOutcomes.targetId],
+        set: { phone: dto.phone, outcome: dto.outcome, nextStep: dto.nextStep, notes: dto.notes, updatedAt: new Date() },
+      });
+    return { ok: true };
+  }
+
+  async setRecommendation(tenantId: string, campaignId: string, dto: SetRecommendationDto) {
+    await this.db
+      .insert(voiceCampaignReports)
+      .values({ tenantId, liveHubCampaignId: campaignId, recommendation: dto.recommendation })
+      .onConflictDoUpdate({
+        target: voiceCampaignReports.liveHubCampaignId,
+        set: { recommendation: dto.recommendation, updatedAt: new Date() },
+      });
+    return { ok: true };
+  }
+
+  async uploadBatch(
+    tenantId: string,
+    batch: string,
+    buffer: Buffer,
+    scheduledAt?: string,
+    liveHubCampaignId?: string,
+  ) {
+    let rows: Record<string, unknown>[];
+    try {
+      const workbook = XLSX.read(buffer, { type: 'buffer' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      // raw:false forces SheetJS to use each cell's formatted display text
+      // rather than its coerced numeric value — without it, phone numbers
+      // with a leading 0 silently lose that digit.
+      rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+    } catch {
+      throw badRequest('INVALID_FILE', 'Could not parse the uploaded file as Excel/CSV');
+    }
+    if (rows.length === 0) throw badRequest('EMPTY_FILE', 'No rows found in the uploaded file');
+    if (rows.length > MAX_ROWS) throw badRequest('TOO_MANY_ROWS', `Max ${MAX_ROWS} contacts per upload`);
+
+    const phoneKey = findKey(rows[0], PHONE_HEADERS);
+    if (!phoneKey) {
+      throw badRequest('MISSING_PHONE_COLUMN', 'Could not find a phone column (expected a header like "phone")');
+    }
+    const reasonKey = findKey(rows[0], REASON_HEADERS);
+    const nameKey = findKey(rows[0], NAME_HEADERS);
+
+    const results = await Promise.all(
+      rows.map(async (row, index) => {
+        const phone = String(row[phoneKey] ?? '').trim();
+        const reason = reasonKey ? String(row[reasonKey] ?? '').trim() : '';
+        const name = nameKey ? String(row[nameKey] ?? '').trim() : '';
+        if (!phone) {
+          return { row: index + 2, accepted: false, reason: 'missing_phone' };
+        }
+        const result = await this.dial.enqueueOutbound(tenantId, {
+          campaign: batch,
+          liveHubCampaignId,
+          phone,
+          name: name || undefined,
+          reason: reason || undefined,
+          scheduledAt,
+        });
+        return { row: index + 2, phone, ...result };
+      }),
+    );
+    const accepted = results.filter((r) => r.accepted).length;
+    return { accepted, rejected: results.length - accepted, results };
+  }
+
+  listAttempts(tenantId: string, query: { campaign?: string; status?: string }) {
+    return this.dial.listOutboundAttempts(tenantId, query);
+  }
+
+  listBatches(tenantId: string) {
+    return this.dial.listBatches(tenantId);
+  }
+
+  addDnc(tenantId: string, dto: OutreachDncDto) {
+    return this.dial.addDnc(tenantId, dto.phone, dto.reason, 'outreach');
+  }
+
+  async callNow(tenantId: string, phone: string, reason?: string, liveHubCampaignId?: string, instant?: boolean) {
+    if (instant) {
+      const dial = await this.dial.dialoutNow(tenantId, phone, reason);
+      return { accepted: dial.dialed, reason: dial.dialed ? undefined : dial.reason, phone, dial };
+    }
+    const enqueued = await this.dial.enqueueOutbound(tenantId, { campaign: 'Instant call', liveHubCampaignId, phone, reason });
+    if (!enqueued.accepted || !enqueued.attempt) {
+      return enqueued;
+    }
+    const dial = await this.dial.startOutbound(tenantId, enqueued.attempt.id);
+    return { ...enqueued, dial };
+  }
+}
