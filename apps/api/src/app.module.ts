@@ -13,6 +13,7 @@ import { TelephonyCredentialsModule } from './modules/tenant/telephony-credentia
 import { DncModule } from './modules/tenant/dnc/dnc.module';
 import { CampaignsModule } from './modules/tenant/campaigns/campaigns.module';
 import { ContactsModule } from './modules/tenant/contacts/contacts.module';
+import { TeamModule } from './modules/tenant/team/team.module';
 
 @Module({
   imports: [
@@ -30,6 +31,7 @@ import { ContactsModule } from './modules/tenant/contacts/contacts.module';
     DncModule,
     CampaignsModule,
     ContactsModule,
+    TeamModule,
   ],
 })
 export class AppModule {}
