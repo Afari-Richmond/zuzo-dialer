@@ -4,7 +4,24 @@ import { NestExpressApplication } from '@nestjs/platform-express';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { existsSync } from 'fs';
 import { join } from 'path';
+import type { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
+
+// SPA static serving: files under /prefix/ come straight off disk; any other
+// GET under /prefix/ (a client-side route like /app/campaigns/:id) falls
+// back to index.html so the React router can take over.
+function serveSpa(app: NestExpressApplication, root: string, prefix: string, logger: Logger) {
+  app.useStaticAssets(root, { prefix, index: false, redirect: false });
+  const expressApp = app.getHttpAdapter().getInstance();
+  expressApp.use(prefix, (req: Request, res: Response, next: NextFunction) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    if (req.path !== '/' && /\.[a-z0-9]+$/i.test(req.path)) return next();
+    res.sendFile(join(root, 'index.html'), (err?: Error) => {
+      if (err) next(err);
+    });
+  });
+  logger.log(`Serving ${prefix} (${root})`);
+}
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
@@ -21,22 +38,18 @@ async function bootstrap() {
     }),
   );
 
-  const tenantWebCandidates = [join(__dirname, '..', 'tenant-web', 'dist')];
-  const tenantWebRoot = tenantWebCandidates.find((dir) =>
-    existsSync(join(dir, 'index.html')),
-  );
-  if (tenantWebRoot) {
-    app.useStaticAssets(tenantWebRoot, { prefix: '/app/' });
-    logger.log(`Tenant web UI at /app/ (${tenantWebRoot})`);
+  const tenantWebRoot = join(__dirname, '..', '..', 'tenant-web', 'dist');
+  if (existsSync(join(tenantWebRoot, 'index.html'))) {
+    serveSpa(app, tenantWebRoot, '/app/', logger);
+  } else {
+    logger.warn(`tenant-web/dist not found at ${tenantWebRoot} — run \`npm run build -w apps/tenant-web\``);
   }
 
-  const platformWebCandidates = [join(__dirname, '..', 'platform-web', 'dist')];
-  const platformWebRoot = platformWebCandidates.find((dir) =>
-    existsSync(join(dir, 'index.html')),
-  );
-  if (platformWebRoot) {
-    app.useStaticAssets(platformWebRoot, { prefix: '/super-admin/' });
-    logger.log(`Platform (super-admin) web UI at /super-admin/ (${platformWebRoot})`);
+  const platformWebRoot = join(__dirname, '..', '..', 'platform-web', 'dist');
+  if (existsSync(join(platformWebRoot, 'index.html'))) {
+    serveSpa(app, platformWebRoot, '/super-admin/', logger);
+  } else {
+    logger.warn(`platform-web/dist not found at ${platformWebRoot} — run \`npm run build -w apps/platform-web\``);
   }
 
   const config = new DocumentBuilder()
