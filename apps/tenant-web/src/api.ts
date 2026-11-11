@@ -423,6 +423,27 @@ export const credentialsApi = {
     request<{ ok: boolean }>('tenant/telephony-credentials', `/${id}`, { method: 'DELETE' }),
 };
 
+export type AiAgentSummary = { id: string; name: string };
+export type AiAgentDetail = AiAgentSummary & { llm: string | null };
+export type AiAgentModel = { name: string; isRealtime: boolean; latencyMs: number | null };
+
+export const aiAgentApi = {
+  getConfig: () => request<{ agentId: string | null }>('tenant/ai-agent', '/config'),
+  setAgent: (agentId: string) =>
+    request<{ agentId: string }>('tenant/ai-agent', '/config', {
+      method: 'PUT',
+      body: JSON.stringify({ agentId }),
+    }),
+  listAgents: () => request<{ agents: AiAgentSummary[] }>('tenant/ai-agent', '/agents'),
+  listModels: () => request<{ models: AiAgentModel[] }>('tenant/ai-agent', '/models'),
+  getCurrent: () => request<AiAgentDetail>('tenant/ai-agent', '/current'),
+  setModel: (llm: string) =>
+    request<AiAgentDetail>('tenant/ai-agent', '/model', {
+      method: 'PUT',
+      body: JSON.stringify({ llm }),
+    }),
+};
+
 export type TeamMember = {
   id: string;
   email: string;

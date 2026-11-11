@@ -1,0 +1,100 @@
+import { Inject, Injectable } from '@nestjs/common';
+import { eq } from 'drizzle-orm';
+import { DRIZZLE } from '../../../db/database.module';
+import type { Database } from '../../../db/client';
+import { tenantAiAgentConfig } from '../../../db/schema';
+import { badRequest, serviceUnavailable } from '../../../common/errors';
+import { VoiceAdapterFactoryService } from '../../voice/voice-adapter-factory.service';
+import type { SetAiAgentDto, SetAiAgentModelDto } from './dto/ai-agent.dto';
+
+/**
+ * Thin proxy onto LiveHub's AI Agents framework — every value here (agent
+ * list, current model, available models) is read live from LiveHub, and
+ * saving a model writes straight back to it. There is no local model-choice
+ * state; this UI is a view onto AudioCodes' own configuration, not a
+ * separate setting that happens to resemble it.
+ *
+ * A 401/403 from LiveHub almost always means this tenant's LiveHub API
+ * client (the same clientId/clientSecret already used for campaigns) hasn't
+ * been granted the LIVEHUB/AIFRAMEWORK/* role in Access control (IAM) — a
+ * one-time setup step in the AudioCodes dashboard, not a bug — so that case
+ * is surfaced as a distinct, actionable error rather than a generic 503.
+ */
+@Injectable()
+export class AiAgentService {
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly adapterFactory: VoiceAdapterFactoryService,
+  ) {}
+
+  private async run<T>(action: () => Promise<T>): Promise<T> {
+    try {
+      return await action();
+    } catch (err) {
+      const message = (err as Error).message;
+      if (/\((401|403)\)/.test(message)) {
+        throw badRequest(
+          'AI_AGENTS_NOT_AUTHORIZED',
+          "Your AudioCodes API client isn't authorized for AI Agents. Grant it the AI Agents role under Access control (IAM) in the LiveHub dashboard, then try again.",
+        );
+      }
+      throw serviceUnavailable('LIVEHUB_AI_AGENTS_ERROR', message);
+    }
+  }
+
+  async getConfig(tenantId: string) {
+    const [row] = await this.db
+      .select({ agentId: tenantAiAgentConfig.agentId })
+      .from(tenantAiAgentConfig)
+      .where(eq(tenantAiAgentConfig.tenantId, tenantId))
+      .limit(1);
+    return { agentId: row?.agentId ?? null };
+  }
+
+  async setAgent(tenantId: string, dto: SetAiAgentDto) {
+    await this.db
+      .insert(tenantAiAgentConfig)
+      .values({ tenantId, agentId: dto.agentId })
+      .onConflictDoUpdate({
+        target: tenantAiAgentConfig.tenantId,
+        set: { agentId: dto.agentId, updatedAt: new Date() },
+      });
+    return { agentId: dto.agentId };
+  }
+
+  async listAgents(tenantId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const agents = await this.run(() => liveHub.listAgents());
+    return { agents };
+  }
+
+  async listModels(tenantId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const models = await this.run(() => liveHub.listModels());
+    return { models };
+  }
+
+  private async requireAgentId(tenantId: string): Promise<string> {
+    const { agentId } = await this.getConfig(tenantId);
+    if (!agentId) {
+      throw badRequest(
+        'AI_AGENT_NOT_SELECTED',
+        'Pick which AudioCodes AI Agent backs this tenant before managing its model',
+      );
+    }
+    return agentId;
+  }
+
+  async getCurrent(tenantId: string) {
+    const agentId = await this.requireAgentId(tenantId);
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    return this.run(() => liveHub.getAgent(agentId));
+  }
+
+  async setModel(tenantId: string, dto: SetAiAgentModelDto) {
+    const agentId = await this.requireAgentId(tenantId);
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    await this.run(() => liveHub.updateAgentModel(agentId, dto.llm));
+    return this.run(() => liveHub.getAgent(agentId));
+  }
+}

@@ -9,5 +9,6 @@ export * from './voice-dnc';
 export * from './voice-outbound-attempts';
 export * from './voice-campaign-outcomes';
 export * from './voice-campaign-reports';
+export * from './tenant-ai-agent-config';
 export * from './voice-calls';
 export * from './relations';

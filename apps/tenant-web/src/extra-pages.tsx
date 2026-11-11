@@ -1,5 +1,5 @@
-import { useState, type FormEvent } from 'react';
-import { credentialsApi, teamApi, ApiError } from './api';
+import { useEffect, useState, type FormEvent } from 'react';
+import { aiAgentApi, credentialsApi, teamApi, ApiError } from './api';
 import { Btn, ErrorBanner, Field, Input, Select, Table, useLoad } from './ui';
 
 /**
@@ -136,6 +136,158 @@ export function TelephonySettingsPage() {
             </tr>
           ))}
         </Table>
+      )}
+
+      <h2 className="mb-1.5 mt-8 text-sm font-semibold text-foreground">AI Agent</h2>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Everything below is read live from your AudioCodes LiveHub account and saved straight
+        back to it — there's no separate local setting.
+      </p>
+      <AiAgentSection />
+
+      <div className="card-surface mt-6 p-6">
+        <h2 className="mb-1.5 text-sm font-semibold text-foreground">Voice &amp; Speech</h2>
+        <p className="mb-3 text-sm text-muted-foreground">
+          Voice and speech-provider settings — including ElevenLabs and your own cloned voices —
+          are configured per bot connection in the AudioCodes LiveHub dashboard; there's no API
+          for it yet, so this isn't duplicated here.
+        </p>
+        <a
+          href="https://livehub.audiocodes.io/portal/dashboard"
+          target="_blank"
+          rel="noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-full border border-input bg-card px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
+        >
+          Open LiveHub dashboard ↗
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * A thin proxy onto LiveHub's AI Agents framework, not a local setting: the
+ * agent list, the current model, and the list of available models are all
+ * fetched live from AudioCodes every time this mounts, and saving writes
+ * straight back to the same LiveHub account via AiAgentService on the API
+ * side.
+ */
+function AiAgentSection() {
+  const { data: config, error: configError, loading: configLoading, reload: reloadConfig } = useLoad(
+    () => aiAgentApi.getConfig(),
+    'ai-agent-config',
+  );
+  const { data: agentsData, error: agentsError } = useLoad(
+    () => aiAgentApi.listAgents(),
+    'ai-agent-agents',
+  );
+  const [agentId, setAgentId] = useState('');
+  const [agentSaving, setAgentSaving] = useState(false);
+  const [agentSaveError, setAgentSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (config) setAgentId(config.agentId ?? '');
+  }, [config]);
+
+  function saveAgent() {
+    if (!agentId) return;
+    setAgentSaving(true);
+    setAgentSaveError(null);
+    aiAgentApi
+      .setAgent(agentId)
+      .then(() => reloadConfig())
+      .catch((err: Error) => setAgentSaveError(err instanceof ApiError ? err.message : err.message))
+      .finally(() => setAgentSaving(false));
+  }
+
+  return (
+    <div className="card-surface grid gap-4 p-6">
+      {configLoading && !config && <p className="text-sm text-muted-foreground">Loading…</p>}
+      <ErrorBanner error={configError} />
+      <ErrorBanner error={agentsError} />
+
+      <Field label="Agent">
+        <Select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
+          <option value="">— select the AI Agent behind this tenant's bot —</option>
+          {(agentsData?.agents ?? []).map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.name}
+            </option>
+          ))}
+        </Select>
+      </Field>
+      <div>
+        <Btn type="button" onClick={saveAgent} disabled={agentSaving || !agentId}>
+          {agentSaving ? 'Saving…' : 'Save agent'}
+        </Btn>
+        <ErrorBanner error={agentSaveError} />
+      </div>
+
+      {config?.agentId && <AiAgentModelPicker key={config.agentId} />}
+    </div>
+  );
+}
+
+function AiAgentModelPicker() {
+  const { data: current, error: currentError, loading: currentLoading, reload: reloadCurrent } = useLoad(
+    () => aiAgentApi.getCurrent(),
+    'ai-agent-current',
+  );
+  const { data: modelsData, error: modelsError } = useLoad(
+    () => aiAgentApi.listModels(),
+    'ai-agent-models',
+  );
+  const [llm, setLlm] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (current) setLlm(current.llm ?? '');
+  }, [current]);
+
+  function saveModel() {
+    if (!llm) return;
+    setSaving(true);
+    setSaveError(null);
+    setSaved(false);
+    aiAgentApi
+      .setModel(llm)
+      .then(() => {
+        setSaved(true);
+        reloadCurrent();
+      })
+      .catch((err: Error) => setSaveError(err instanceof ApiError ? err.message : err.message))
+      .finally(() => setSaving(false));
+  }
+
+  return (
+    <div className="border-t border-border pt-4">
+      {currentLoading && !current && <p className="text-sm text-muted-foreground">Loading…</p>}
+      <ErrorBanner error={currentError} />
+      <ErrorBanner error={modelsError} />
+      {current && (
+        <>
+          <Field label={`Model for "${current.name}"`}>
+            <Select value={llm} onChange={(e) => setLlm(e.target.value)}>
+              <option value="">— select a model —</option>
+              {(modelsData?.models ?? []).map((m) => (
+                <option key={m.name} value={m.name}>
+                  {m.name}
+                  {m.isRealtime ? ' (speech-to-speech)' : ''}
+                  {m.latencyMs ? ` · ~${m.latencyMs}ms` : ''}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {saved && <p className="mt-2 text-sm text-green-700">Model saved to AudioCodes.</p>}
+          <div className="mt-2">
+            <Btn type="button" onClick={saveModel} disabled={saving || !llm}>
+              {saving ? 'Saving…' : 'Save model'}
+            </Btn>
+            <ErrorBanner error={saveError} />
+          </div>
+        </>
       )}
     </div>
   );

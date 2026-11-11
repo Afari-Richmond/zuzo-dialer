@@ -12,6 +12,7 @@ import { TelephonyCredentialsModule } from './modules/tenant/telephony-credentia
 import { OutreachModule } from './modules/tenant/outreach/outreach.module';
 import { TeamModule } from './modules/tenant/team/team.module';
 import { BrandingModule } from './modules/tenant/branding/branding.module';
+import { AiAgentModule } from './modules/tenant/ai-agent/ai-agent.module';
 
 @Module({
   imports: [
@@ -28,6 +29,7 @@ import { BrandingModule } from './modules/tenant/branding/branding.module';
     OutreachModule,
     TeamModule,
     BrandingModule,
+    AiAgentModule,
   ],
 })
 export class AppModule {}

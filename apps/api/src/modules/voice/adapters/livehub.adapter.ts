@@ -9,6 +9,22 @@ import type { LiveHubCredentials } from './credentials.types';
 import { badRequest } from '../../../common/errors';
 
 const BASE_URL = 'https://livehub.audiocodes.io';
+const AI_AGENTS_PATH = '/ai-framework-management/api/v1';
+
+export interface AiAgentSummary {
+  id: string;
+  name: string;
+}
+
+export interface AiAgentDetail extends AiAgentSummary {
+  llm: string | null;
+}
+
+export interface AiAgentModel {
+  name: string;
+  isRealtime: boolean;
+  latencyMs: number | null;
+}
 
 function toE164Ghana(local: string): string {
   const digits = local.replace(/\D/g, '');
@@ -724,5 +740,60 @@ export class LiveHubAdapter implements VoiceProviderAdapter {
       nextStep: (data.next_step as string) ?? (data.nextStep as string) ?? null,
       summary: (data.summary as string) ?? null,
     };
+  }
+
+  /**
+   * AI Agents framework methods — separate ID space and permission namespace
+   * (LIVEHUB/AIFRAMEWORK/*) from the campaignDialer bots/campaigns above, but
+   * same OAuth client/token. A 401/403 here almost always means this
+   * tenant's LiveHub API client hasn't been granted the AI Agents role in
+   * Access control (IAM), not that something is broken — callers surface
+   * that distinctly (see AiAgentService).
+   */
+  async listAgents(): Promise<AiAgentSummary[]> {
+    const res = await this.request(`${AI_AGENTS_PATH}/agents?limit=200`);
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub list agents failed (${res.status}): ${bodyText}`);
+    }
+    const parsed = JSON.parse(bodyText) as { agents?: { id: string; name: string }[] };
+    return (parsed.agents ?? []).map((a) => ({ id: a.id, name: a.name }));
+  }
+
+  async getAgent(agentId: string): Promise<AiAgentDetail> {
+    const res = await this.request(`${AI_AGENTS_PATH}/agents/${agentId}`);
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub get agent failed (${res.status}): ${bodyText}`);
+    }
+    const parsed = JSON.parse(bodyText) as { id: string; name: string; llm: string | null };
+    return { id: parsed.id, name: parsed.name, llm: parsed.llm ?? null };
+  }
+
+  async updateAgentModel(agentId: string, llm: string): Promise<void> {
+    const res = await this.request(`${AI_AGENTS_PATH}/agents/${agentId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ llm }),
+    });
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub update agent model failed (${res.status}): ${bodyText}`);
+    }
+  }
+
+  async listModels(): Promise<AiAgentModel[]> {
+    const res = await this.request(`${AI_AGENTS_PATH}/info/models`);
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub list models failed (${res.status}): ${bodyText}`);
+    }
+    const parsed = JSON.parse(bodyText) as {
+      models: { name: string; is_realtime: boolean; latency_ms: number | null }[];
+    };
+    return parsed.models.map((m) => ({
+      name: m.name,
+      isRealtime: m.is_realtime,
+      latencyMs: m.latency_ms ?? null,
+    }));
   }
 }
