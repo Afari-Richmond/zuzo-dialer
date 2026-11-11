@@ -1,0 +1,9 @@
+{
+  "name": "tenant-web",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "echo 'tenant-web scaffolding lands in M6'",
+    "build": "echo 'tenant-web scaffolding lands in M6'"
+  }
+}

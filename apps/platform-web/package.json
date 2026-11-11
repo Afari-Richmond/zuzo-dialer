@@ -1,0 +1,9 @@
+{
+  "name": "platform-web",
+  "private": true,
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "echo 'platform-web scaffolding lands in M7'",
+    "build": "echo 'platform-web scaffolding lands in M7'"
+  }
+}
