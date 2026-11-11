@@ -7,6 +7,8 @@ import { TenantAuthModule } from './modules/tenant/tenant-auth/tenant-auth.modul
 import { TenantsModule } from './modules/platform/tenants/tenants.module';
 import { PlatformAdminsModule } from './modules/platform/platform-admins/platform-admins.module';
 import { PlatformStatsModule } from './modules/platform/platform-stats/platform-stats.module';
+import { VoiceModule } from './modules/voice/voice.module';
+import { TelephonyCredentialsModule } from './modules/tenant/telephony-credentials/telephony-credentials.module';
 
 @Module({
   imports: [
@@ -18,6 +20,8 @@ import { PlatformStatsModule } from './modules/platform/platform-stats/platform-
     TenantsModule,
     PlatformAdminsModule,
     PlatformStatsModule,
+    VoiceModule,
+    TelephonyCredentialsModule,
   ],
 })
 export class AppModule {}
