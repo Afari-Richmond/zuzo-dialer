@@ -11,6 +11,7 @@ import { VoiceModule } from './modules/voice/voice.module';
 import { TelephonyCredentialsModule } from './modules/tenant/telephony-credentials/telephony-credentials.module';
 import { OutreachModule } from './modules/tenant/outreach/outreach.module';
 import { TeamModule } from './modules/tenant/team/team.module';
+import { BrandingModule } from './modules/tenant/branding/branding.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { TeamModule } from './modules/tenant/team/team.module';
     TelephonyCredentialsModule,
     OutreachModule,
     TeamModule,
+    BrandingModule,
   ],
 })
 export class AppModule {}

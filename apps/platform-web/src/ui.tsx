@@ -208,8 +208,8 @@ export function Table({
       <table className="min-w-full text-left text-sm">
         <thead className="text-muted-foreground">
           <tr>
-            {headers.map((h) => (
-              <th key={h} className="px-5 py-3.5 text-xs font-medium uppercase tracking-wide">
+            {headers.map((h, i) => (
+              <th key={i} className="px-5 py-3.5 text-xs font-medium uppercase tracking-wide">
                 {h}
               </th>
             ))}

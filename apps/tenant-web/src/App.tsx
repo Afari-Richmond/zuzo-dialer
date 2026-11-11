@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { LogOut, Megaphone, PhoneOff, Radio, Settings, UploadCloud, Users } from 'lucide-react';
+import { LogOut, Megaphone, Palette, PhoneOff, Radio, Settings, UploadCloud, Users } from 'lucide-react';
 import { ApiError, api } from './api';
 import {
   AttemptsPage,
@@ -10,8 +10,33 @@ import {
 } from './pages';
 import { TeamPage, TelephonySettingsPage } from './extra-pages';
 import { AcceptInvitePage, ForgotPasswordPage, ResetPasswordPage } from './auth-pages';
+import { SettingsPage } from './settings-pages';
+import { brandingApi } from './api';
 import { navigate } from './nav';
 import { Btn, ErrorBanner, Field, Input } from './ui';
+
+/** Lightens a hex color toward white by `amount` (0-1) — used to derive the
+ * sidebar's "active nav text" glow shade from one brand color. */
+function lighten(hex: string, amount: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, Math.round(((n >> 16) & 255) + (255 - ((n >> 16) & 255)) * amount));
+  const g = Math.min(255, Math.round(((n >> 8) & 255) + (255 - ((n >> 8) & 255)) * amount));
+  const b = Math.min(255, Math.round((n & 255) + (255 - (n & 255)) * amount));
+  return `#${[r, g, b].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function applyBrandColor(hex: string | null) {
+  const root = document.documentElement;
+  if (!hex) {
+    root.style.removeProperty('--primary');
+    root.style.removeProperty('--primary-glow');
+    root.style.removeProperty('--ring');
+    return;
+  }
+  root.style.setProperty('--primary', hex);
+  root.style.setProperty('--primary-glow', lighten(hex, 0.35));
+  root.style.setProperty('--ring', hex);
+}
 
 const NAV = [
   { id: 'upload', label: 'Upload contacts', icon: UploadCloud },
@@ -20,6 +45,7 @@ const NAV = [
   { id: 'dnc', label: 'Do-not-call', icon: PhoneOff },
   { id: 'settings', label: 'Telephony', icon: Settings },
   { id: 'team', label: 'Team', icon: Users },
+  { id: 'account', label: 'Settings', icon: Palette },
 ] as const;
 
 type PageId = (typeof NAV)[number]['id'];
@@ -36,6 +62,7 @@ export function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [route, setRoute] = useState<Route>(routeFromPath);
   const [path, setPath] = useState(window.location.pathname);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -43,6 +70,17 @@ export function App() {
       .then(() => setAuthed(true))
       .catch(() => setAuthed(false));
   }, []);
+
+  useEffect(() => {
+    if (!authed) return;
+    brandingApi
+      .get()
+      .then((branding) => {
+        applyBrandColor(branding.primaryColor);
+        setLogoUrl(branding.logoUrl);
+      })
+      .catch(() => {});
+  }, [authed]);
 
   useEffect(() => {
     const onPop = () => {
@@ -92,9 +130,20 @@ export function App() {
         <aside className="hidden w-20 shrink-0 bg-sidebar lg:flex xl:w-64">
           <div className="sticky top-0 flex max-h-screen w-full flex-col overflow-y-auto px-3 py-6 xl:px-4">
             <div className="mb-8 flex items-center justify-center gap-3 px-1 xl:justify-start">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
-                Z
-              </div>
+              {logoUrl ? (
+                <img
+                  src={logoUrl}
+                  alt="Logo"
+                  className="size-9 shrink-0 rounded-xl object-cover"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).style.display = 'none';
+                  }}
+                />
+              ) : (
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
+                  Z
+                </div>
+              )}
               <div className="hidden min-w-0 xl:block">
                 <div className="truncate text-xs font-medium uppercase tracking-wide text-primary-glow">
                   ZuZo Insure
@@ -157,6 +206,8 @@ export function App() {
               <TelephonySettingsPage />
             ) : route.page === 'team' ? (
               <TeamPage />
+            ) : route.page === 'account' ? (
+              <SettingsPage />
             ) : (
               <UploadPage />
             )}

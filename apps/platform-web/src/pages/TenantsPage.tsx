@@ -2,6 +2,11 @@ import { useState, type FormEvent } from 'react';
 import { ApiError, stats as statsApi, tenants as tenantsApi, type Tenant } from '../api';
 import { Btn, ErrorBanner, Field, Input, StatCard, StatusBadge, Table, useLoad } from '../ui';
 
+function tenantBranding(tenant: Tenant): { logoUrl: string | null; primaryColor: string | null } {
+  const branding = (tenant.settings as { branding?: { logoUrl?: string; primaryColor?: string } })?.branding;
+  return { logoUrl: branding?.logoUrl ?? null, primaryColor: branding?.primaryColor ?? null };
+}
+
 export function TenantsPage() {
   const { data: list, error, loading, reload } = useLoad(
     () => tenantsApi.list().then((d) => d.tenants),
@@ -41,7 +46,7 @@ export function TenantsPage() {
         <p className="p-8 text-center text-sm text-muted-foreground">No tenants yet.</p>
       )}
       {list && list.length > 0 && (
-        <Table headers={['Name', 'Slug', 'Status', 'Created', '']}>
+        <Table headers={['', 'Name', 'Slug', 'Status', 'Created', '']}>
           {list.map((t) => (
             <TenantRow key={t.id} tenant={t} onChanged={reload} />
           ))}
@@ -60,8 +65,21 @@ function TenantRow({ tenant, onChanged }: { tenant: Tenant; onChanged: () => voi
     call.then(onChanged).finally(() => setBusy(false));
   }
 
+  const { logoUrl, primaryColor } = tenantBranding(tenant);
+
   return (
     <tr className="border-t border-border hover:bg-secondary">
+      <td className="px-5 py-3.5">
+        {logoUrl ? (
+          <img src={logoUrl} alt="" className="size-8 rounded-lg object-cover" />
+        ) : (
+          <span
+            className="inline-block size-8 rounded-lg"
+            style={{ backgroundColor: primaryColor ?? '#e3e8e7' }}
+            title={primaryColor ?? undefined}
+          />
+        )}
+      </td>
       <td className="px-5 py-3.5 font-medium text-foreground">{tenant.name}</td>
       <td className="px-5 py-3.5 text-muted-foreground">{tenant.slug}</td>
       <td className="px-5 py-3.5">

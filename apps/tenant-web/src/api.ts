@@ -383,6 +383,14 @@ export type TelephonyCredential = {
   updatedAt: string;
 };
 
+export type TenantBranding = { logoUrl: string | null; primaryColor: string | null };
+
+export const brandingApi = {
+  get: () => request<TenantBranding>('tenant/branding', ''),
+  update: (dto: { logoUrl?: string; primaryColor?: string }) =>
+    request<TenantBranding>('tenant/branding', '', { method: 'PUT', body: JSON.stringify(dto) }),
+};
+
 export const credentialsApi = {
   list: () => request<{ credentials: TelephonyCredential[] }>('tenant/telephony-credentials', ''),
   upsert: (dto: { provider: string; label: string; credentials: Record<string, string> }) =>
