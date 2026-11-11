@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { and, desc, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import * as XLSX from 'xlsx';
 import { DRIZZLE } from '../../../db/database.module';
 import type { Database } from '../../../db/client';
@@ -419,6 +419,72 @@ export class OutreachService {
 
   addDnc(tenantId: string, dto: OutreachDncDto) {
     return this.dial.addDnc(tenantId, dto.phone, dto.reason, 'outreach');
+  }
+
+  /**
+   * Cross-campaign analytics — aggregates across all of a tenant's activity
+   * rather than one campaign's LiveHub targets, so it's built entirely from
+   * our own attempt/outcome tables (no LiveHub calls needed).
+   */
+  async getAnalyticsOverview(tenantId: string, from?: string, to?: string) {
+    const fromDate = from ? new Date(from) : new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const toDate = to ? new Date(`${to}T23:59:59.999Z`) : new Date();
+
+    const [statusRows, dailyRows, outcomeRows] = await Promise.all([
+      this.db
+        .select({ status: voiceOutboundAttempts.status, count: sql<number>`count(*)::int` })
+        .from(voiceOutboundAttempts)
+        .where(
+          and(
+            eq(voiceOutboundAttempts.tenantId, tenantId),
+            gte(voiceOutboundAttempts.scheduledAt, fromDate),
+            lte(voiceOutboundAttempts.scheduledAt, toDate),
+          ),
+        )
+        .groupBy(voiceOutboundAttempts.status),
+      this.db
+        .select({
+          date: sql<string>`date_trunc('day', ${voiceOutboundAttempts.scheduledAt})::date`,
+          count: sql<number>`count(*)::int`,
+        })
+        .from(voiceOutboundAttempts)
+        .where(
+          and(
+            eq(voiceOutboundAttempts.tenantId, tenantId),
+            gte(voiceOutboundAttempts.scheduledAt, fromDate),
+            lte(voiceOutboundAttempts.scheduledAt, toDate),
+          ),
+        )
+        .groupBy(sql`date_trunc('day', ${voiceOutboundAttempts.scheduledAt})`)
+        .orderBy(sql`date_trunc('day', ${voiceOutboundAttempts.scheduledAt})`),
+      this.db
+        .select({ outcome: voiceCampaignOutcomes.outcome, count: sql<number>`count(*)::int` })
+        .from(voiceCampaignOutcomes)
+        .where(
+          and(
+            eq(voiceCampaignOutcomes.tenantId, tenantId),
+            gte(voiceCampaignOutcomes.updatedAt, fromDate),
+            lte(voiceCampaignOutcomes.updatedAt, toDate),
+          ),
+        )
+        .groupBy(voiceCampaignOutcomes.outcome),
+    ]);
+
+    const byStatus = Object.fromEntries(statusRows.map((r) => [r.status, r.count]));
+    const total = statusRows.reduce((sum, r) => sum + r.count, 0);
+    const completed = byStatus.completed ?? 0;
+    const failed = byStatus.failed ?? 0;
+    const dnc = byStatus.dnc ?? 0;
+    const connected = (byStatus.answered ?? 0) + (byStatus.machine ?? 0) + completed;
+    const answerRate = total > 0 ? connected / total : 0;
+
+    return {
+      totals: { total, completed, failed, dnc, answerRate },
+      dailyTrend: dailyRows.map((r) => ({ date: r.date, count: r.count })),
+      outcomeBreakdown: outcomeRows
+        .filter((r) => !!r.outcome)
+        .map((r) => ({ outcome: r.outcome as string, count: r.count })),
+    };
   }
 
   async callNow(tenantId: string, phone: string, reason?: string, liveHubCampaignId?: string, instant?: boolean) {

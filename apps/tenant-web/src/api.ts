@@ -63,6 +63,12 @@ export type OutboundAttempt = {
 
 export type Batch = { campaign: string; count: number };
 
+export type AnalyticsOverview = {
+  totals: { total: number; completed: number; failed: number; dnc: number; answerRate: number };
+  dailyTrend: { date: string; count: number }[];
+  outcomeBreakdown: { outcome: string; count: number }[];
+};
+
 export type MachineDetection = 'Disabled' | 'Disconnect' | 'Notify Answer Machine';
 
 export type Campaign = {
@@ -362,6 +368,14 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ phone, reason }),
     }),
+  analyticsOverview: (from?: string, to?: string) =>
+    request<AnalyticsOverview>(
+      'outreach',
+      `/analytics/overview?${new URLSearchParams({
+        ...(from ? { from } : {}),
+        ...(to ? { to } : {}),
+      }).toString()}`,
+    ),
   callNow: (phone: string, reason?: string, liveHubCampaignId?: string, instant?: boolean) =>
     request<CallNowResult>('outreach', '/call-now', {
       method: 'POST',

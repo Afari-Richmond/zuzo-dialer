@@ -1,5 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { LogOut, Megaphone, Palette, PhoneOff, Radio, Settings, UploadCloud, Users } from 'lucide-react';
+import {
+  BarChart3,
+  LogOut,
+  Megaphone,
+  Palette,
+  PhoneOff,
+  Radio,
+  Settings,
+  UploadCloud,
+  Users,
+} from 'lucide-react';
 import { ApiError, api } from './api';
 import {
   AttemptsPage,
@@ -8,6 +18,7 @@ import {
   DoNotCallPage,
   UploadPage,
 } from './pages';
+import { AnalyticsPage } from './analytics-page';
 import { TeamPage, TelephonySettingsPage } from './extra-pages';
 import { AcceptInvitePage, ForgotPasswordPage, ResetPasswordPage } from './auth-pages';
 import { SettingsPage } from './settings-pages';
@@ -43,6 +54,7 @@ const NAV = [
   { id: 'campaigns', label: 'Campaigns', icon: Megaphone },
   { id: 'attempts', label: 'Call attempts', icon: Radio },
   { id: 'dnc', label: 'Do-not-call', icon: PhoneOff },
+  { id: 'analytics', label: 'Analytics', icon: BarChart3 },
   { id: 'settings', label: 'Telephony', icon: Settings },
   { id: 'team', label: 'Team', icon: Users },
   { id: 'account', label: 'Settings', icon: Palette },
@@ -202,6 +214,8 @@ export function App() {
               <CampaignsPage />
             ) : route.page === 'dnc' ? (
               <DoNotCallPage />
+            ) : route.page === 'analytics' ? (
+              <AnalyticsPage />
             ) : route.page === 'settings' ? (
               <TelephonySettingsPage />
             ) : route.page === 'team' ? (

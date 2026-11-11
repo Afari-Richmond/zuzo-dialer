@@ -22,6 +22,7 @@ import { TenantAuthGuard } from '../../auth/guards/tenant-auth.guard';
 import { CurrentTenantActor } from '../../auth/current-actor.decorator';
 import type { TenantActor } from '../../auth/jwt-types';
 import {
+  AnalyticsOverviewQueryDto,
   CallNowDto,
   CreateCampaignDto,
   OutreachAttemptsQueryDto,
@@ -89,6 +90,11 @@ export class OutreachController {
   @Post('dnc')
   addDnc(@CurrentTenantActor() actor: TenantActor, @Body() dto: OutreachDncDto) {
     return this.outreach.addDnc(actor.tenantId, dto);
+  }
+
+  @Get('analytics/overview')
+  analyticsOverview(@CurrentTenantActor() actor: TenantActor, @Query() query: AnalyticsOverviewQueryDto) {
+    return this.outreach.getAnalyticsOverview(actor.tenantId, query.from, query.to);
   }
 
   @Get('campaigns')
