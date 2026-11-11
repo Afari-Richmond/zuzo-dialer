@@ -147,18 +147,18 @@ export function TeamPage() {
   const [displayName, setDisplayName] = useState('');
   const [role, setRole] = useState<'tenant_admin' | 'agent'>('agent');
   const [inviteError, setInviteError] = useState<string | null>(null);
-  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [invitedEmail, setInvitedEmail] = useState<string | null>(null);
   const [inviting, setInviting] = useState(false);
 
   function invite(e: FormEvent) {
     e.preventDefault();
     setInviting(true);
     setInviteError(null);
-    setTempPassword(null);
+    setInvitedEmail(null);
     teamApi
       .invite({ email, displayName, role })
-      .then(({ tempPassword }) => {
-        setTempPassword(tempPassword);
+      .then(() => {
+        setInvitedEmail(email);
         setEmail('');
         setDisplayName('');
         reload();
@@ -169,10 +169,9 @@ export function TeamPage() {
 
   return (
     <div className="max-w-2xl">
-      {tempPassword && (
-        <p className="mb-4 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          Share this temporary password with the new team member — it won't be shown again:{' '}
-          <code className="rounded bg-amber-100 px-1.5 py-0.5 font-mono">{tempPassword}</code>
+      {invitedEmail && (
+        <p className="mb-4 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">
+          Invitation sent to {invitedEmail} — they'll get an email with a link to set their password.
         </p>
       )}
       <form onSubmit={invite} className="card-surface mb-6 flex flex-wrap items-end gap-3 p-6">

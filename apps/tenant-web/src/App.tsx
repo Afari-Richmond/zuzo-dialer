@@ -9,6 +9,7 @@ import {
   UploadPage,
 } from './pages';
 import { TeamPage, TelephonySettingsPage } from './extra-pages';
+import { AcceptInvitePage, ForgotPasswordPage, ResetPasswordPage } from './auth-pages';
 import { navigate } from './nav';
 import { Btn, ErrorBanner, Field, Input } from './ui';
 
@@ -34,6 +35,7 @@ function routeFromPath(): Route {
 export function App() {
   const [authed, setAuthed] = useState<boolean | null>(null);
   const [route, setRoute] = useState<Route>(routeFromPath);
+  const [path, setPath] = useState(window.location.pathname);
 
   useEffect(() => {
     api
@@ -43,7 +45,10 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const onPop = () => setRoute(routeFromPath());
+    const onPop = () => {
+      setRoute(routeFromPath());
+      setPath(window.location.pathname);
+    };
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
@@ -52,6 +57,13 @@ export function App() {
     navigate(`/outreach/${id}`);
     setRoute({ page: id });
   }
+
+  // Token-flow pages render outside the auth gate entirely — same pattern
+  // as the original app special-casing /accept-invite and /reset-password —
+  // so these links work even if the browser still has a stale session.
+  if (path.endsWith('/accept-invite')) return <AcceptInvitePage />;
+  if (path.endsWith('/forgot-password')) return <ForgotPasswordPage />;
+  if (path.endsWith('/reset-password')) return <ResetPasswordPage />;
 
   if (authed === null) {
     return (
@@ -222,6 +234,13 @@ function Login({ onOk }: { onOk: () => void }) {
         <Btn className="mt-5 w-full" type="submit" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </Btn>
+        <button
+          type="button"
+          onClick={() => navigate('/outreach/forgot-password')}
+          className="mt-3 w-full text-center text-sm text-muted-foreground hover:text-foreground"
+        >
+          Forgot password?
+        </button>
       </form>
     </div>
   );

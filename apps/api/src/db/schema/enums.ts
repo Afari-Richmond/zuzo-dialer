@@ -79,3 +79,8 @@ export const voiceCallStatusEnum = pgEnum('voice_call_status', [
   'no_answer',
   'busy',
 ]);
+
+export const tenantUserTokenPurposeEnum = pgEnum('tenant_user_token_purpose', [
+  'invite',
+  'password_reset',
+]);

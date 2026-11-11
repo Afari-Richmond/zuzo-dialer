@@ -4,9 +4,12 @@ import * as bcrypt from 'bcrypt';
 import { and, eq } from 'drizzle-orm';
 import { DRIZZLE } from '../../../db/database.module';
 import type { Database } from '../../../db/client';
-import { tenantUsers } from '../../../db/schema';
+import { tenantUsers, tenants } from '../../../db/schema';
 import { conflict, notFound } from '../../../common/errors';
 import { tenantWhere } from '../../../common/tenant-scope';
+import { TenantUserTokensService } from '../tenant-auth/tenant-user-tokens.service';
+import { EmailService } from '../../email/email.service';
+import { ConfigService } from '@nestjs/config';
 import type { InviteTenantUserDto, UpdateTenantUserDto } from './dto/team.dto';
 
 const PASSWORD_HASH_ROUNDS = 12;
@@ -20,13 +23,14 @@ const METADATA_COLUMNS = {
   createdAt: tenantUsers.createdAt,
 };
 
-function generateTempPassword(): string {
-  return randomBytes(9).toString('base64url');
-}
-
 @Injectable()
 export class TeamService {
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly tokens: TenantUserTokensService,
+    private readonly email: EmailService,
+    private readonly config: ConfigService,
+  ) {}
 
   list(tenantId: string) {
     return this.db
@@ -43,24 +47,34 @@ export class TeamService {
       .limit(1);
     if (existing) throw conflict('EMAIL_TAKEN', 'A user with that email already exists');
 
-    const tempPassword = generateTempPassword();
-    const passwordHash = await bcrypt.hash(tempPassword, PASSWORD_HASH_ROUNDS);
+    // Unusable placeholder hash — the real password is set by the user via
+    // the invite-acceptance flow, never disclosed by the inviter.
+    const placeholderHash = await bcrypt.hash(randomBytes(24).toString('hex'), PASSWORD_HASH_ROUNDS);
     const [user] = await this.db
       .insert(tenantUsers)
       .values({
         tenantId,
         email: dto.email.toLowerCase(),
-        passwordHash,
+        passwordHash: placeholderHash,
         displayName: dto.displayName,
         role: dto.role,
-        status: 'active',
+        status: 'invited',
         invitedAt: new Date(),
       })
       .returning(METADATA_COLUMNS);
 
-    // Shown once — there is no email-invite flow yet, so the tenant admin
-    // shares this with the new user out of band.
-    return { user, tempPassword };
+    const [tenant] = await this.db
+      .select({ name: tenants.name })
+      .from(tenants)
+      .where(eq(tenants.id, tenantId))
+      .limit(1);
+
+    const token = await this.tokens.issueInvite(user.id);
+    const baseUrl = this.config.get<string>('TENANT_WEB_URL') || 'http://localhost:5174';
+    const acceptUrl = `${baseUrl}/outreach/accept-invite?token=${token}`;
+    await this.email.sendInvite(user.email, tenant?.name ?? 'your team', acceptUrl);
+
+    return { user };
   }
 
   async update(tenantId: string, id: string, dto: UpdateTenantUserDto) {

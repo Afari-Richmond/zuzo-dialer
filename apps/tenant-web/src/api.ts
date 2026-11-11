@@ -252,6 +252,26 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
   logout: () => request<{ ok: boolean }>('tenant/auth', '/logout', { method: 'POST' }),
+  acceptInvite: (token: string, password: string) =>
+    request<{ ok: boolean }>('tenant/auth', '/accept-invite', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    }),
+  forgotPassword: (email: string) =>
+    request<{ ok: boolean }>('tenant/auth', '/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+  resetPassword: (token: string, password: string) =>
+    request<{ ok: boolean }>('tenant/auth', '/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    }),
+  changePassword: (currentPassword: string, newPassword: string) =>
+    request<{ ok: boolean }>('tenant/auth', '/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    }),
 
   upload: (batch: string, file: File, scheduledAt?: string, liveHubCampaignId?: string) => {
     const form = new FormData();
@@ -387,7 +407,7 @@ export type TeamMember = {
 export const teamApi = {
   list: () => request<{ members: TeamMember[] }>('tenant/team', ''),
   invite: (dto: { email: string; displayName: string; role: 'tenant_admin' | 'agent' }) =>
-    request<{ user: TeamMember; tempPassword: string }>('tenant/team', '/invite', {
+    request<{ user: TeamMember }>('tenant/team', '/invite', {
       method: 'POST',
       body: JSON.stringify(dto),
     }),
