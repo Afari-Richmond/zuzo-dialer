@@ -363,6 +363,13 @@ export const api = {
       method: 'PUT',
       body: JSON.stringify({ recommendation }),
     }),
+  getAiContext: (campaignId: string) =>
+    request<{ aiContext: string | null }>('outreach', `/campaigns/${campaignId}/ai-context`),
+  setAiContext: (campaignId: string, aiContext: string) =>
+    request<{ aiContext: string }>('outreach', `/campaigns/${campaignId}/ai-context`, {
+      method: 'PUT',
+      body: JSON.stringify({ aiContext }),
+    }),
   addDnc: (phone: string, reason?: string) =>
     request<{ phone: string; dnc: boolean }>('outreach', '/dnc', {
       method: 'POST',

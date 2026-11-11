@@ -27,6 +27,7 @@ import {
   CreateCampaignDto,
   OutreachAttemptsQueryDto,
   OutreachDncDto,
+  SetAiContextDto,
   SetRecommendationDto,
   UpdateCampaignDto,
   UploadBatchDto,
@@ -192,6 +193,16 @@ export class OutreachController {
   @Put('campaigns/:id/recommendation')
   setRecommendation(@CurrentTenantActor() actor: TenantActor, @Param('id') id: string, @Body() dto: SetRecommendationDto) {
     return this.outreach.setRecommendation(actor.tenantId, id, dto);
+  }
+
+  @Get('campaigns/:id/ai-context')
+  getAiContext(@CurrentTenantActor() actor: TenantActor, @Param('id') id: string) {
+    return this.outreach.getAiContext(actor.tenantId, id);
+  }
+
+  @Put('campaigns/:id/ai-context')
+  setAiContext(@CurrentTenantActor() actor: TenantActor, @Param('id') id: string, @Body() dto: SetAiContextDto) {
+    return this.outreach.setAiContext(actor.tenantId, id, dto);
   }
 
   @Post('call-now')

@@ -247,3 +247,9 @@ export class SetRecommendationDto {
   @MaxLength(4000)
   recommendation!: string;
 }
+
+export class SetAiContextDto {
+  @IsString()
+  @MaxLength(4000)
+  aiContext!: string;
+}

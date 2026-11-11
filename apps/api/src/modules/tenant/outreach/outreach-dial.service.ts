@@ -3,7 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { DRIZZLE } from '../../../db/database.module';
 import type { Database } from '../../../db/client';
-import { voiceCalls, voiceDnc, voiceOutboundAttempts } from '../../../db/schema';
+import { voiceCalls, voiceCampaignReports, voiceDnc, voiceOutboundAttempts } from '../../../db/schema';
 import { badRequest, notFound } from '../../../common/errors';
 import { VoiceAdapterFactoryService } from '../../voice/voice-adapter-factory.service';
 import { normalizeGhanaPhone } from './phone';
@@ -28,6 +28,15 @@ export class OutreachDialService {
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly adapterFactory: VoiceAdapterFactoryService,
   ) {}
+
+  private async getAiContext(tenantId: string, liveHubCampaignId: string): Promise<string | undefined> {
+    const [row] = await this.db
+      .select({ aiContext: voiceCampaignReports.aiContext })
+      .from(voiceCampaignReports)
+      .where(and(eq(voiceCampaignReports.tenantId, tenantId), eq(voiceCampaignReports.liveHubCampaignId, liveHubCampaignId)))
+      .limit(1);
+    return row?.aiContext ?? undefined;
+  }
 
   async isDnc(tenantId: string, phone: string): Promise<boolean> {
     const [row] = await this.db
@@ -161,6 +170,9 @@ export class OutreachDialService {
     const callId = `vc_${randomUUID()}`;
     const webhookUrl = 'https://zuzo-dialer.invalid/webhooks/voice';
     const reason = attempt.reason || undefined;
+    const aiContext = attempt.liveHubCampaignId
+      ? await this.getAiContext(tenantId, attempt.liveHubCampaignId)
+      : undefined;
 
     let started: { providerCallId: string };
     try {
@@ -173,6 +185,7 @@ export class OutreachDialService {
           campaign: attempt.campaign,
           ...(attempt.name ? { name: attempt.name } : {}),
           ...(reason ? { reason } : {}),
+          ...(aiContext ? { campaignContext: aiContext } : {}),
         },
       });
     } catch (err) {

@@ -11,6 +11,7 @@ import { OutreachDialService } from './outreach-dial.service';
 import type {
   CreateCampaignDto,
   OutreachDncDto,
+  SetAiContextDto,
   SetRecommendationDto,
   UpdateCampaignDto,
   UpsertOutcomeDto,
@@ -356,6 +357,33 @@ export class OutreachService {
         set: { recommendation: dto.recommendation, updatedAt: new Date() },
       });
     return { ok: true };
+  }
+
+  /**
+   * Industry/use-case context for the AI bot on this campaign — e.g. "this is
+   * a parking renewal reminder for a Ghanaian audience; be brief and quote
+   * amounts in GHS". Merged into botMetadata on every call for the campaign
+   * (see OutreachDialService.startOutbound/dialoutNow), alongside the
+   * per-contact `reason` already captured at upload time.
+   */
+  async getAiContext(tenantId: string, campaignId: string) {
+    const [row] = await this.db
+      .select({ aiContext: voiceCampaignReports.aiContext })
+      .from(voiceCampaignReports)
+      .where(and(eq(voiceCampaignReports.tenantId, tenantId), eq(voiceCampaignReports.liveHubCampaignId, campaignId)))
+      .limit(1);
+    return { aiContext: row?.aiContext ?? null };
+  }
+
+  async setAiContext(tenantId: string, campaignId: string, dto: SetAiContextDto) {
+    await this.db
+      .insert(voiceCampaignReports)
+      .values({ tenantId, liveHubCampaignId: campaignId, aiContext: dto.aiContext })
+      .onConflictDoUpdate({
+        target: voiceCampaignReports.liveHubCampaignId,
+        set: { aiContext: dto.aiContext, updatedAt: new Date() },
+      });
+    return { aiContext: dto.aiContext };
   }
 
   async uploadBatch(

@@ -1,0 +1,1 @@
+ALTER TABLE "voice_campaign_reports" ADD COLUMN "ai_context" text;

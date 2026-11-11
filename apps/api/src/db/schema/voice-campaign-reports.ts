@@ -7,6 +7,11 @@ export const voiceCampaignReports = pgTable('voice_campaign_reports', {
     .notNull()
     .references(() => tenants.id, { onDelete: 'cascade' }),
   recommendation: text('recommendation'),
+  // Operational context for the AI voice bot — industry, product, tone, talking
+  // points — merged into botMetadata on every call for this campaign, alongside
+  // the per-contact `reason`. Distinct from `recommendation`, which is a
+  // post-campaign staff review note, not call-time input.
+  aiContext: text('ai_context'),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .defaultNow()
     .notNull()

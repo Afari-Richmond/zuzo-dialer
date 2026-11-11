@@ -1495,6 +1495,12 @@ function CampaignForm({
         </div>
       </FormSection>
 
+      {mode === 'edit' && campaignId && (
+        <FormSection title="AI Agent Context">
+          <AiContextEditor campaignId={campaignId} />
+        </FormSection>
+      )}
+
       <div className="flex gap-2">
         {mode === 'edit' && onCancel && (
           <Btn type="button" kind="ghost" onClick={onCancel} disabled={submitting}>
@@ -1512,6 +1518,63 @@ function CampaignForm({
         </Btn>
       </div>
     </form>
+  );
+}
+
+/**
+ * Industry/use-case context for the AI bot, independent of the rest of the
+ * campaign form so it can be saved on its own (same pattern as the campaign
+ * "recommendation" field on the report page) — merged into every call's
+ * metadata alongside the per-contact reason, see outreach-dial.service.ts.
+ */
+function AiContextEditor({ campaignId }: { campaignId: string }) {
+  const { data, error, loading } = useLoad(
+    () => api.getAiContext(campaignId),
+    `ai-context-${campaignId}`,
+  );
+  const [aiContext, setAiContext] = useState('');
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    if (data) setAiContext(data.aiContext ?? '');
+  }, [data]);
+
+  function save() {
+    setSaving(true);
+    setSaveError(null);
+    setSaved(false);
+    api
+      .setAiContext(campaignId, aiContext)
+      .then(() => setSaved(true))
+      .catch((err: Error) => setSaveError(err.message))
+      .finally(() => setSaving(false));
+  }
+
+  return (
+    <div>
+      <Hint>
+        Describe what this campaign is about so the AI bot knows how to talk to contacts —
+        industry, product, tone, key talking points. Combined with each contact's own reason at
+        call time.
+      </Hint>
+      {loading && !data && <p className="text-sm text-muted-foreground">Loading…</p>}
+      <ErrorBanner error={error} />
+      <Textarea
+        rows={4}
+        value={aiContext}
+        onChange={(e) => setAiContext(e.target.value)}
+        placeholder="e.g. This is a car insurance renewal reminder campaign for Ghanaian customers. Be warm, concise, and quote amounts in GHS."
+      />
+      {saved && <p className="mt-2 text-sm text-green-700">AI context saved.</p>}
+      <ErrorBanner error={saveError} />
+      <div className="mt-2">
+        <Btn type="button" onClick={save} disabled={saving}>
+          {saving ? 'Saving…' : 'Save AI context'}
+        </Btn>
+      </div>
+    </div>
   );
 }
 
