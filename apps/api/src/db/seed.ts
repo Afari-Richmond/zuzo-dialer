@@ -32,17 +32,17 @@ async function main() {
   const [tenant] = await db
     .select()
     .from(tenants)
-    .where(eq(tenants.slug, 'acme'))
+    .where(eq(tenants.slug, 'zuzo-insure'))
     .limit(1);
   const tenantId =
     tenant?.id ??
     (
       await db
         .insert(tenants)
-        .values({ name: 'Acme Co (demo)', slug: 'acme', status: 'active' })
+        .values({ name: 'ZuZo Insure', slug: 'zuzo-insure', status: 'active' })
         .returning({ id: tenants.id })
     )[0].id;
-  if (!tenant) console.log('Seeded demo tenant: acme');
+  if (!tenant) console.log('Seeded tenant: zuzo-insure');
 
   const [owner] = await db
     .select()
