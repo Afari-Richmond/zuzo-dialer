@@ -5,7 +5,6 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent,
-  type MouseEvent,
   type ReactNode,
 } from 'react';
 import {
@@ -651,7 +650,15 @@ const EDIT_TABS: { id: EditTab; label: string }[] = [
 ];
 
 /** Dims the page and centers its children, closing on backdrop click or Escape. */
-function Modal({ onClose, children }: { onClose: () => void; children: ReactNode }) {
+function Modal({
+  onClose,
+  children,
+  maxWidth = 'max-w-3xl',
+}: {
+  onClose: () => void;
+  children: ReactNode;
+  maxWidth?: string;
+}) {
   useEffect(() => {
     function onKeyDown(e: globalThis.KeyboardEvent) {
       if (e.key === 'Escape') onClose();
@@ -666,7 +673,7 @@ function Modal({ onClose, children }: { onClose: () => void; children: ReactNode
       onClick={onClose}
     >
       <div
-        className="max-h-[85vh] w-full max-w-3xl overflow-y-auto rounded-2xl bg-card shadow-2xl"
+        className={`max-h-[85vh] w-full ${maxWidth} overflow-y-auto rounded-2xl bg-card shadow-2xl`}
         onClick={(e) => e.stopPropagation()}
       >
         {children}
@@ -1171,21 +1178,6 @@ function CampaignEditPanel({
     `campaign-edit:${campaignId}`,
   );
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  function confirmDelete() {
-    setDeleting(true);
-    setDeleteError(null);
-    api
-      .deleteCampaign(campaignId)
-      .then(() => onDeleted())
-      .catch((err: Error) => {
-        setDeleteError(err.message);
-        setConfirmingDelete(false);
-      })
-      .finally(() => setDeleting(false));
-  }
 
   return (
     <div>
@@ -1242,24 +1234,9 @@ function CampaignEditPanel({
               }}
             />
             <div className="mt-6 border-t border-border pt-4">
-              <ErrorBanner error={deleteError} />
-              {confirmingDelete ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-destructive">
-                    Delete permanently? All targets/call data go with it.
-                  </span>
-                  <Btn kind="ghost" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
-                    Cancel
-                  </Btn>
-                  <Btn kind="danger" onClick={confirmDelete} disabled={deleting}>
-                    {deleting ? 'Deleting…' : 'Confirm delete'}
-                  </Btn>
-                </div>
-              ) : (
-                <Btn kind="ghost" onClick={() => setConfirmingDelete(true)}>
-                  Delete campaign
-                </Btn>
-              )}
+              <Btn kind="ghost" onClick={() => setConfirmingDelete(true)}>
+                Delete campaign
+              </Btn>
             </div>
           </div>
         )}
@@ -1267,6 +1244,14 @@ function CampaignEditPanel({
         {tab === 'statistics' && <CampaignStatsGrid campaignId={campaignId} />}
         {tab === 'targets' && <TargetsList campaignId={campaignId} />}
       </div>
+
+      {confirmingDelete && campaign && (
+        <DeleteCampaignModal
+          campaign={campaign}
+          onClose={() => setConfirmingDelete(false)}
+          onDeleted={onDeleted}
+        />
+      )}
     </div>
   );
 }
@@ -2521,16 +2506,60 @@ function CampaignSummaryBar({ campaigns }: { campaigns: Campaign[] }) {
   );
 }
 
+function DeleteCampaignModal({
+  campaign,
+  onClose,
+  onDeleted,
+}: {
+  campaign: Campaign;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function confirmDelete() {
+    setDeleting(true);
+    setError(null);
+    api
+      .deleteCampaign(campaign.campaignID)
+      .then(() => onDeleted())
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setDeleting(false));
+  }
+
+  return (
+    <Modal onClose={() => (deleting ? undefined : onClose())} maxWidth="max-w-sm">
+      <div className="p-6">
+        <h3 className="text-lg font-bold text-foreground">Delete campaign?</h3>
+        <p className="mt-2 text-sm text-muted-foreground">
+          <span className="font-medium text-foreground">{campaign.campaignName}</span> and all of its targets
+          and call data will be permanently deleted. This can't be undone.
+        </p>
+        {error && <ErrorBanner error={error} />}
+        <div className="mt-5 flex justify-end gap-2.5">
+          <Btn kind="ghost" onClick={onClose} disabled={deleting}>
+            Cancel
+          </Btn>
+          <Btn kind="danger" onClick={confirmDelete} disabled={deleting}>
+            {deleting ? 'Deleting…' : 'Delete permanently'}
+          </Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 function CampaignRow({
   campaign,
   expanded,
   onToggle,
-  onDeleted,
+  onRequestDelete,
 }: {
   campaign: Campaign;
   expanded: boolean;
   onToggle: () => void;
-  onDeleted: () => void;
+  onRequestDelete: (campaign: Campaign) => void;
 }) {
   const { schedulerSettings: s, status: st } = campaign;
   const durationPct = durationProgressPct(s.beginningDate, s.endingDate);
@@ -2538,23 +2567,6 @@ function CampaignRow({
   const successPct = total > 0 ? (st.targetsAnswered / total) * 100 : 0;
   const failPct = total > 0 ? (st.targetsFailed / total) * 100 : 0;
   const overallPct = total > 0 ? Math.round((st.targetsCompleted / total) * 100) : 0;
-  const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
-
-  function confirmDelete(e: MouseEvent) {
-    e.stopPropagation();
-    setDeleting(true);
-    setDeleteError(null);
-    api
-      .deleteCampaign(campaign.campaignID)
-      .then(() => onDeleted())
-      .catch((err: Error) => {
-        setDeleteError(err.message);
-        setConfirmingDelete(false);
-      })
-      .finally(() => setDeleting(false));
-  }
 
   return (
     <tr
@@ -2595,59 +2607,41 @@ function CampaignRow({
           </div>
         </td>
         <td className="px-5 py-4 text-right">
-          {confirmingDelete ? (
-            <div
-              className="flex items-center justify-end gap-2"
-              onClick={(e) => e.stopPropagation()}
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                navigate(`/outreach/campaigns/${campaign.campaignID}/report`);
+              }}
+              title="View report"
+              className="inline-flex size-8 cursor-pointer items-center justify-center rounded-full border border-input bg-card text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
             >
-              {deleteError && (
-                <span className="text-xs text-destructive">{deleteError}</span>
-              )}
-              <span className="text-xs font-medium text-destructive">Delete permanently?</span>
-              <Btn kind="ghost" onClick={() => setConfirmingDelete(false)} disabled={deleting}>
-                Cancel
-              </Btn>
-              <Btn kind="danger" onClick={confirmDelete} disabled={deleting}>
-                {deleting ? 'Deleting…' : 'Confirm'}
-              </Btn>
-            </div>
-          ) : (
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  navigate(`/outreach/campaigns/${campaign.campaignID}/report`);
-                }}
-                title="View report"
-                className="inline-flex size-8 cursor-pointer items-center justify-center rounded-full border border-input bg-card text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              >
-                <FileText className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onToggle();
-                }}
-                title="Manage campaign"
-                className="inline-flex size-8 cursor-pointer items-center justify-center rounded-full border border-input bg-card text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-              >
-                <Pencil className="size-3.5" />
-              </button>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setConfirmingDelete(true);
-                }}
-                title="Delete campaign"
-                className="inline-flex size-8 cursor-pointer items-center justify-center rounded-full border border-input bg-card text-muted-foreground transition-colors hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
-              >
-                <Trash2 className="size-3.5" />
-              </button>
-            </div>
-          )}
+              <FileText className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggle();
+              }}
+              title="Manage campaign"
+              className="inline-flex size-8 cursor-pointer items-center justify-center rounded-full border border-input bg-card text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              <Pencil className="size-3.5" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRequestDelete(campaign);
+              }}
+              title="Delete campaign"
+              className="inline-flex size-8 cursor-pointer items-center justify-center rounded-full border border-input bg-card text-muted-foreground transition-colors hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          </div>
         </td>
     </tr>
   );
@@ -2657,6 +2651,7 @@ export function CampaignsPage() {
   const [showForm, setShowForm] = useState(false);
   const [search, setSearch] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Campaign | null>(null);
   const { data, error, loading, reload } = useLoad(
     () => api.campaigns().then((d) => d.campaigns),
     'campaigns-page',
@@ -2788,10 +2783,7 @@ export function CampaignsPage() {
                     onToggle={() =>
                       setExpandedId((cur) => (cur === c.campaignID ? null : c.campaignID))
                     }
-                    onDeleted={() => {
-                      setExpandedId((cur) => (cur === c.campaignID ? null : cur));
-                      reload();
-                    }}
+                    onRequestDelete={setDeleteTarget}
                   />
                 ))}
               </tbody>
@@ -2812,6 +2804,18 @@ export function CampaignsPage() {
             onUpdated={reload}
           />
         </Modal>
+      )}
+
+      {deleteTarget && (
+        <DeleteCampaignModal
+          campaign={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDeleted={() => {
+            setDeleteTarget(null);
+            setExpandedId((cur) => (cur === deleteTarget.campaignID ? null : cur));
+            reload();
+          }}
+        />
       )}
     </div>
   );
