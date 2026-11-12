@@ -18,6 +18,7 @@ import type { Response } from 'express';
 import { memoryStorage } from 'multer';
 import { ApiExceptionFilter } from '../../../common/filters/http-exception.filter';
 import { ResponseInterceptor } from '../../../common/interceptors/response.interceptor';
+import { IdempotencyInterceptor } from '../../../common/interceptors/idempotency.interceptor';
 import { TenantAuthGuard } from '../../auth/guards/tenant-auth.guard';
 import { CurrentTenantActor } from '../../auth/current-actor.decorator';
 import type { TenantActor } from '../../auth/jwt-types';
@@ -67,7 +68,7 @@ export class OutreachController {
   }
 
   @Post('upload')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: MAX_FILE_BYTES } }))
+  @UseInterceptors(IdempotencyInterceptor, FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: MAX_FILE_BYTES } }))
   upload(
     @CurrentTenantActor() actor: TenantActor,
     @Body() dto: UploadBatchDto,
@@ -118,6 +119,7 @@ export class OutreachController {
   }
 
   @Post('campaigns')
+  @UseInterceptors(IdempotencyInterceptor)
   createCampaign(@CurrentTenantActor() actor: TenantActor, @Body() dto: CreateCampaignDto) {
     return this.outreach.createCampaign(actor.tenantId, dto);
   }
@@ -233,6 +235,7 @@ export class OutreachController {
   }
 
   @Post('call-now')
+  @UseInterceptors(IdempotencyInterceptor)
   callNow(@CurrentTenantActor() actor: TenantActor, @Body() dto: CallNowDto) {
     return this.outreach.callNow(actor.tenantId, dto.phone, dto.reason, dto.liveHubCampaignId, dto.instant);
   }

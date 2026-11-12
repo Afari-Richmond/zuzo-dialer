@@ -11,4 +11,5 @@ export * from './voice-campaign-outcomes';
 export * from './voice-campaign-reports';
 export * from './tenant-ai-agent-config';
 export * from './voice-calls';
+export * from './idempotency-keys';
 export * from './relations';
