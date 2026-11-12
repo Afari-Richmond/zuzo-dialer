@@ -1313,6 +1313,234 @@ function Hint({ children }: { children: ReactNode }) {
   return <p className="mt-1.5 text-xs text-muted-foreground">{children}</p>;
 }
 
+/**
+ * The upload-a-batch form from UploadPage, trimmed for use as the last step
+ * of campaign creation: no campaign picker (this campaign is fixed) and no
+ * call-now/instant-dial affordance (that's a separate ad-hoc workflow, not
+ * part of loading the initial target list).
+ */
+function ContactsUploadStep({ campaignId, onDone }: { campaignId: string; onDone: () => void }) {
+  const [mode, setMode] = useState<'file' | 'type'>('file');
+  const [batch, setBatch] = useState('');
+  const [file, setFile] = useState<File | null>(null);
+  const [contacts, setContacts] = useState<TypedContact[]>([]);
+  const [contactPhone, setContactPhone] = useState('');
+  const [contactReason, setContactReason] = useState('');
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [scheduleValue, setScheduleValue] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [msg, setMsg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const phoneInputRef = useRef<HTMLInputElement>(null);
+
+  function addContact() {
+    const phone = contactPhone.trim();
+    if (!phone) return;
+    setContacts((prev) => [...prev, { phone, reason: contactReason.trim() }]);
+    setContactPhone('');
+    setContactReason('');
+    phoneInputRef.current?.focus();
+  }
+
+  function removeContact(index: number) {
+    setContacts((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function handleContactKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      addContact();
+    }
+  }
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!batch.trim()) {
+      setError('Pick a batch name.');
+      return;
+    }
+    const uploadFile = mode === 'file' ? file : contacts.length ? contactsToCsvFile(contacts) : null;
+    if (!uploadFile) {
+      setError(mode === 'file' ? 'Choose a file.' : 'Add at least one contact.');
+      return;
+    }
+    const scheduledDate = scheduleEnabled ? new Date(scheduleValue) : null;
+    if (scheduleEnabled && (!scheduleValue || Number.isNaN(scheduledDate!.getTime()))) {
+      setError('Pick a valid date and time, or turn scheduling off.');
+      return;
+    }
+    const scheduledAt = scheduledDate?.toISOString();
+
+    setSubmitting(true);
+    setError(null);
+    setMsg(null);
+    api
+      .upload(batch.trim(), uploadFile, scheduledAt, campaignId)
+      .then((res) => {
+        setMsg(`Queued ${res.accepted} contact(s), skipped ${res.rejected}.`);
+        setBatch('');
+        setFile(null);
+        setContacts([]);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setSubmitting(false));
+  }
+
+  return (
+    <form onSubmit={submit} className="grid gap-4">
+      <Hint>
+        Upload your target list for this campaign now, or skip and do it later from Upload
+        contacts. You can upload more than one batch here before finishing.
+      </Hint>
+      <ErrorBanner error={error} />
+      {msg && (
+        <p className="rounded-xl bg-green-50 px-3.5 py-2.5 text-sm text-green-700">{msg}</p>
+      )}
+
+      <Field label="Batch name">
+        <Input
+          value={batch}
+          onChange={(e) => setBatch(e.target.value)}
+          placeholder="e.g. Nov 2026 renewal push"
+        />
+      </Field>
+
+      <div className="flex gap-1 rounded-full bg-secondary p-1">
+        <button
+          type="button"
+          onClick={() => setMode('file')}
+          className={`flex-1 cursor-pointer rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+            mode === 'file' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+          }`}
+        >
+          Upload file
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode('type')}
+          className={`flex-1 cursor-pointer rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+            mode === 'type' ? 'bg-card text-foreground shadow-sm' : 'text-muted-foreground'
+          }`}
+        >
+          Type contacts
+        </button>
+      </div>
+
+      {mode === 'file' ? (
+        <Field label="File (.xlsx or .csv)">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".xlsx,.xls,.csv"
+            onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            className="block w-full text-sm text-muted-foreground file:mr-3 file:cursor-pointer file:rounded-full file:border-0 file:bg-secondary file:px-3.5 file:py-2 file:text-sm file:font-medium file:text-foreground hover:file:bg-border"
+          />
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            Needs a <code className="rounded bg-secondary px-1 py-0.5">phone</code> column and an
+            optional <code className="rounded bg-secondary px-1 py-0.5">reason</code> (or{' '}
+            <code className="rounded bg-secondary px-1 py-0.5">notes</code>) column.
+          </p>
+        </Field>
+      ) : (
+        <div>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="w-40">
+              <Field label="Phone">
+                <Input
+                  ref={phoneInputRef}
+                  value={contactPhone}
+                  onChange={(e) => setContactPhone(e.target.value)}
+                  onKeyDown={handleContactKeyDown}
+                  placeholder="0244123456"
+                />
+              </Field>
+            </div>
+            <div className="min-w-48 flex-1">
+              <Field label="Reason (optional)">
+                <Input
+                  value={contactReason}
+                  onChange={(e) => setContactReason(e.target.value)}
+                  onKeyDown={handleContactKeyDown}
+                  placeholder="e.g. Renewal reminder"
+                />
+              </Field>
+            </div>
+            <Btn type="button" kind="ghost" onClick={addContact} disabled={!contactPhone.trim()}>
+              Add
+            </Btn>
+          </div>
+
+          {contacts.length > 0 && (
+            <div className="mt-3 overflow-hidden rounded-xl border border-border">
+              <div className="max-h-56 divide-y divide-border overflow-y-auto">
+                {contacts.map((c, i) => (
+                  <div key={i} className="flex items-center gap-3 bg-card px-4 py-2.5 text-sm">
+                    <span className="font-medium text-foreground">{c.phone}</span>
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">{c.reason}</span>
+                    <button
+                      type="button"
+                      onClick={() => removeContact(i)}
+                      aria-label={`Remove ${c.phone}`}
+                      className="flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground hover:bg-secondary hover:text-destructive"
+                    >
+                      <X className="size-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="bg-secondary px-4 py-2 text-xs font-medium text-muted-foreground">
+                {contacts.length} contact{contacts.length === 1 ? '' : 's'} ready
+              </div>
+            </div>
+          )}
+          {contacts.length === 0 && (
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Enter a phone number and press Add (or Enter) to build the list.
+            </p>
+          )}
+        </div>
+      )}
+
+      <div>
+        <label className="flex cursor-pointer items-center gap-2 text-sm font-medium text-foreground">
+          <input
+            type="checkbox"
+            checked={scheduleEnabled}
+            onChange={(e) => setScheduleEnabled(e.target.checked)}
+            className="size-4 cursor-pointer rounded border-input accent-primary"
+          />
+          Schedule for later
+        </label>
+        {scheduleEnabled && (
+          <div className="mt-2">
+            <Input
+              type="datetime-local"
+              value={scheduleValue}
+              min={nowForDatetimeLocal()}
+              onChange={(e) => setScheduleValue(e.target.value)}
+              required={scheduleEnabled}
+            />
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              Calls won't start until this time. Leave unchecked to queue for immediate dialing.
+            </p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex gap-2">
+        <Btn type="button" kind="ghost" onClick={onDone} disabled={submitting}>
+          {msg ? 'Done' : 'Skip for now'}
+        </Btn>
+        <Btn type="submit" disabled={submitting}>
+          {submitting ? 'Uploading…' : 'Upload'}
+        </Btn>
+      </div>
+    </form>
+  );
+}
+
 function CampaignForm({
   mode,
   campaignId,
@@ -1367,6 +1595,13 @@ function CampaignForm({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Create mode only: a popup wizard instead of one long scrolling form, so
+  // the campaign list behind it doesn't get pushed down, and the target
+  // list can be uploaded as the last step instead of a separate page you
+  // have to remember to visit afterward.
+  const [step, setStep] = useState(0);
+  const [createdCampaignId, setCreatedCampaignId] = useState<string | null>(null);
+
   const { data: bots } = useLoad(
     () => api.bots().then((d) => d.bots).catch(() => []),
     'campaign-form-bots',
@@ -1382,13 +1617,8 @@ function CampaignForm({
     );
   }
 
-  function submit(e: FormEvent) {
-    e.preventDefault();
-    if (!everyday && days.length === 0) {
-      setError('Pick at least one day, or select Everyday.');
-      return;
-    }
-    const common = {
+  function schedulerPayload() {
+    return {
       defaultBotName: defaultBotName || undefined,
       timeZone,
       startLocalTime,
@@ -1403,30 +1633,390 @@ function CampaignForm({
       minWaitDurationForAnswer,
       machineDetection,
     };
-    setSubmitting(true);
-    setError(null);
-    if (mode === 'create') {
-      api
-        .createCampaign({ campaignName: campaignName.trim(), ...common, lockOnCreate: locked })
-        .then((created) =>
-          aiContext.trim()
-            ? api.setAiContext(created.campaignID, aiContext.trim()).then(() => created)
-            : created,
-        )
-        .then(() => {
-          setCampaignName('');
-          setAiContext('');
-          onSaved();
-        })
-        .catch((err: Error) => setError(err.message))
-        .finally(() => setSubmitting(false));
+  }
+
+  /** Edit mode only — one long form, submitted all at once, as before. */
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    if (!everyday && days.length === 0) {
+      setError('Pick at least one day, or select Everyday.');
       return;
     }
+    setSubmitting(true);
+    setError(null);
     api
-      .updateCampaign(campaignId!, { ...common, locked })
+      .updateCampaign(campaignId!, { ...schedulerPayload(), locked })
       .then(() => onSaved())
       .catch((err: Error) => setError(err.message))
       .finally(() => setSubmitting(false));
+  }
+
+  /** Create mode only — one small form per wizard step. Steps 0-2 are pure
+   * client-side navigation; step 3 is where the campaign is actually
+   * created (so steps 4-5 have a real campaignId to save against), and
+   * once that succeeds there's no going back — re-submitting step 3 would
+   * create a second campaign. */
+  function nextStep(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setStep((s) => s + 1);
+  }
+
+  function submitSchedule(e: FormEvent) {
+    e.preventDefault();
+    if (!everyday && days.length === 0) {
+      setError('Pick at least one day, or select Everyday.');
+      return;
+    }
+    setError(null);
+    setStep((s) => s + 1);
+  }
+
+  function createAndContinue(e: FormEvent) {
+    e.preventDefault();
+    setSubmitting(true);
+    setError(null);
+    api
+      .createCampaign({ campaignName: campaignName.trim(), ...schedulerPayload(), lockOnCreate: locked })
+      .then((created) => {
+        setCreatedCampaignId(created.campaignID);
+        setStep((s) => s + 1);
+      })
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setSubmitting(false));
+  }
+
+  function saveContextAndContinue(e: FormEvent) {
+    e.preventDefault();
+    if (!aiContext.trim()) {
+      setStep((s) => s + 1);
+      return;
+    }
+    setSubmitting(true);
+    setError(null);
+    api
+      .setAiContext(createdCampaignId!, aiContext.trim())
+      .then(() => setStep((s) => s + 1))
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setSubmitting(false));
+  }
+
+  if (mode === 'create') {
+    const stepLabels = ['Basics', 'Schedule', 'Call rate', 'Failure handling', 'AI context', 'Upload contacts'];
+    return (
+      <div className="grid gap-5">
+        <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
+          {stepLabels.map((label, i) => (
+            <span key={label} className="flex items-center gap-1.5">
+              <span
+                className={`flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-medium ${
+                  i === step
+                    ? 'bg-primary text-primary-foreground'
+                    : i < step
+                      ? 'bg-primary/15 text-primary'
+                      : 'bg-secondary text-muted-foreground'
+                }`}
+              >
+                {i < step ? '✓' : i + 1}
+              </span>
+              <span className={`text-xs font-medium ${i === step ? 'text-foreground' : 'text-muted-foreground'}`}>
+                {label}
+              </span>
+              {i < stepLabels.length - 1 && <span className="mx-1 h-px w-4 shrink-0 bg-border" />}
+            </span>
+          ))}
+        </div>
+
+        {step === 0 && (
+          <form onSubmit={nextStep} className="grid gap-4">
+            <ErrorBanner error={error} />
+            <FormSection title="Campaign Control">
+              <Toggle checked={locked} onChange={setLocked} offLabel="Unlock" onLabel="Lock" />
+              <Hint>
+                Leave on Unlock so the campaign starts calling once it has targets and its start
+                date arrives. Lock to create it dormant.
+              </Hint>
+            </FormSection>
+            <FormSection title="General Settings">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Campaign name">
+                  <Input
+                    value={campaignName}
+                    onChange={(e) => setCampaignName(e.target.value)}
+                    placeholder="e.g. Dec 2026 renewal push"
+                    required
+                    autoFocus
+                  />
+                </Field>
+                <div>
+                  <Field label="Default bot name (optional)">
+                    <Select value={defaultBotName} onChange={(e) => setDefaultBotName(e.target.value)}>
+                      <option value="">— each target must name its own bot —</option>
+                      {(bots ?? []).map((b) => (
+                        <option key={b.botName} value={b.botName}>
+                          {b.botDisplayName}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                  <Hint>
+                    The bot that handles calls. Each target can name its own bot, overriding this
+                    one. Only bots with outbound calling enabled can be used in a campaign.
+                  </Hint>
+                </div>
+              </div>
+            </FormSection>
+            <div className="flex justify-end">
+              <Btn type="submit">Next</Btn>
+            </div>
+          </form>
+        )}
+
+        {step === 1 && (
+          <form onSubmit={submitSchedule} className="grid gap-4">
+            <ErrorBanner error={error} />
+            <FormSection title="Schedule Settings">
+              <Field label="Time zone">
+                <Select value={timeZone} onChange={(e) => setTimeZone(e.target.value)} required>
+                  {(timezones ?? []).length === 0 && <option value={timeZone}>{timeZone}</option>}
+                  {(timezones ?? []).map((tz) => (
+                    <option key={tz.timezone} value={tz.timezone}>
+                      {tz.timezone} (UTC{tz.offset})
+                    </option>
+                  ))}
+                </Select>
+                <Hint>Once the campaign has enabled targets, the time zone is fixed.</Hint>
+              </Field>
+
+              <div>
+                <span className="mb-1.5 block text-sm font-medium text-foreground">Campaign time</span>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Start-Time">
+                    <Input
+                      type="time"
+                      value={startLocalTime}
+                      onChange={(e) => setStartLocalTime(e.target.value)}
+                      required
+                    />
+                  </Field>
+                  <Field label="End-Time">
+                    <Input
+                      type="time"
+                      value={stopLocalTime}
+                      onChange={(e) => setStopLocalTime(e.target.value)}
+                      required
+                    />
+                  </Field>
+                </div>
+              </div>
+
+              <div>
+                <span className="mb-1.5 block text-sm font-medium text-foreground">Campaign days</span>
+                <div className="flex flex-wrap gap-3">
+                  {WEEKDAYS.map((day) => (
+                    <label
+                      key={day}
+                      className={`flex items-center gap-1.5 text-sm text-foreground ${
+                        everyday ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={days.includes(day)}
+                        disabled={everyday}
+                        onChange={() => toggleDay(day)}
+                        className="size-4 cursor-pointer rounded border-input accent-primary disabled:cursor-not-allowed"
+                      />
+                      {day.slice(0, 3)}
+                    </label>
+                  ))}
+                  <label className="flex cursor-pointer items-center gap-1.5 text-sm text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={everyday}
+                      onChange={(e) => {
+                        setEveryday(e.target.checked);
+                        if (e.target.checked) setDays([]);
+                      }}
+                      className="size-4 cursor-pointer rounded border-input accent-primary"
+                    />
+                    Everyday
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <span className="mb-1.5 block text-sm font-medium text-foreground">Campaign date range</span>
+                <div className="grid grid-cols-2 gap-4">
+                  <Field label="Start-Date">
+                    <Input
+                      type="date"
+                      value={beginningDate}
+                      min={todayIso()}
+                      onChange={(e) => setBeginningDate(e.target.value)}
+                      required
+                    />
+                  </Field>
+                  <Field label="End-Date">
+                    <Input
+                      type="date"
+                      value={endingDate}
+                      min={beginningDate}
+                      onChange={(e) => setEndingDate(e.target.value)}
+                      required
+                    />
+                  </Field>
+                </div>
+              </div>
+            </FormSection>
+            <div className="flex justify-between">
+              <Btn type="button" kind="ghost" onClick={() => setStep((s) => s - 1)}>
+                Back
+              </Btn>
+              <Btn type="submit">Next</Btn>
+            </div>
+          </form>
+        )}
+
+        {step === 2 && (
+          <form onSubmit={nextStep} className="grid gap-4">
+            <ErrorBanner error={error} />
+            <FormSection title="Call Rate Settings">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Maximum calls per second">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={maxCps}
+                    onChange={(e) => setMaxCps(Number(e.target.value))}
+                    required
+                  />
+                  <Hint>Range: 1-10</Hint>
+                </Field>
+                <Field label="Maximum concurrent calls">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={1000}
+                    value={maxConcurrentCalls}
+                    onChange={(e) => setMaxConcurrentCalls(Number(e.target.value))}
+                    required
+                  />
+                  <Hint>Range: 1-1000</Hint>
+                </Field>
+              </div>
+              <Hint>
+                Your account's own call limits still apply. A campaign cannot exceed them,
+                whatever you set here.
+              </Hint>
+            </FormSection>
+            <div className="flex justify-between">
+              <Btn type="button" kind="ghost" onClick={() => setStep((s) => s - 1)}>
+                Back
+              </Btn>
+              <Btn type="submit">Next</Btn>
+            </div>
+          </form>
+        )}
+
+        {step === 3 && (
+          <form onSubmit={createAndContinue} className="grid gap-4">
+            <ErrorBanner error={error} />
+            <FormSection title="Call Failure and Fax/Answering Machine Settings">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Maximum retries">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={10}
+                    value={maxRetries}
+                    onChange={(e) => setMaxRetries(Number(e.target.value))}
+                    required
+                  />
+                  <Hint>Range: 1-10</Hint>
+                </Field>
+                <Field label="Maximum duration between retries">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={400}
+                    value={minDurationBetweenRetries}
+                    onChange={(e) => setMinDurationBetweenRetries(Number(e.target.value))}
+                    required
+                  />
+                  <Hint>Range: 0-400 min</Hint>
+                </Field>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Action triggered by machine detection">
+                  <Select
+                    value={machineDetection}
+                    onChange={(e) => setMachineDetection(e.target.value as MachineDetection)}
+                  >
+                    {MACHINE_DETECTION_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </Select>
+                </Field>
+                <Field label="Maximum wait time for answer">
+                  <Input
+                    type="number"
+                    min={1}
+                    max={300}
+                    value={minWaitDurationForAnswer}
+                    onChange={(e) => setMinWaitDurationForAnswer(Number(e.target.value))}
+                    required
+                  />
+                  <Hint>Range: 1-300 sec</Hint>
+                </Field>
+              </div>
+            </FormSection>
+            <div className="flex justify-between">
+              <Btn type="button" kind="ghost" onClick={() => setStep((s) => s - 1)} disabled={submitting}>
+                Back
+              </Btn>
+              <Btn type="submit" disabled={submitting}>
+                {submitting ? 'Creating…' : 'Create campaign'}
+              </Btn>
+            </div>
+          </form>
+        )}
+
+        {step === 4 && (
+          <form onSubmit={saveContextAndContinue} className="grid gap-4">
+            <ErrorBanner error={error} />
+            <FormSection title="AI Agent Context">
+              <Hint>
+                Describe what this campaign is about so the AI bot knows how to talk to
+                contacts — industry, product, tone, key talking points. Combined with each
+                contact's own reason at call time.
+              </Hint>
+              <Textarea
+                rows={4}
+                value={aiContext}
+                onChange={(e) => setAiContext(e.target.value)}
+                placeholder="e.g. This is a car insurance renewal reminder campaign for Ghanaian customers. Be warm, concise, and quote amounts in GHS."
+              />
+            </FormSection>
+            <div className="flex justify-end gap-2">
+              <Btn type="button" kind="ghost" onClick={() => setStep((s) => s + 1)} disabled={submitting}>
+                Skip
+              </Btn>
+              <Btn type="submit" disabled={submitting}>
+                {submitting ? 'Saving…' : 'Save & continue'}
+              </Btn>
+            </div>
+          </form>
+        )}
+
+        {step === 5 && createdCampaignId && (
+          <ContactsUploadStep campaignId={createdCampaignId} onDone={onSaved} />
+        )}
+      </div>
+    );
   }
 
   return (
@@ -1437,7 +2027,7 @@ function CampaignForm({
         <Toggle checked={locked} onChange={setLocked} offLabel="Unlock" onLabel="Lock" />
         <Hint>
           Leave on Unlock so the campaign starts calling once it has targets and its start
-          date arrives. Lock to {mode === 'create' ? 'create it dormant' : 'pause it'}.
+          date arrives. Lock to pause it.
         </Hint>
       </FormSection>
 
@@ -1682,19 +2272,13 @@ function CampaignForm({
       </FormSection>
 
       <div className="flex gap-2">
-        {mode === 'edit' && onCancel && (
+        {onCancel && (
           <Btn type="button" kind="ghost" onClick={onCancel} disabled={submitting}>
             Close
           </Btn>
         )}
         <Btn type="submit" disabled={submitting}>
-          {submitting
-            ? mode === 'create'
-              ? 'Creating…'
-              : 'Updating…'
-            : mode === 'create'
-              ? 'Create campaign'
-              : 'Update'}
+          {submitting ? 'Updating…' : 'Update'}
         </Btn>
       </div>
     </form>
@@ -1951,15 +2535,43 @@ export function CampaignsPage() {
       <CampaignSummaryBar campaigns={campaigns} />
 
       {showForm && (
-        <div className="card-surface mb-6 p-6">
-          <CampaignForm
-            mode="create"
-            onSaved={() => {
-              setShowForm(false);
-              reload();
-            }}
-          />
-        </div>
+        <Modal
+          onClose={() => {
+            setShowForm(false);
+            reload();
+          }}
+        >
+          <div className="border-b border-border px-6 py-5">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
+                  New Campaign Dialer
+                </p>
+                <h3 className="text-lg font-bold text-foreground">New campaign</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowForm(false);
+                  reload();
+                }}
+                title="Close"
+                className="flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          </div>
+          <div className="p-6">
+            <CampaignForm
+              mode="create"
+              onSaved={() => {
+                setShowForm(false);
+                reload();
+              }}
+            />
+          </div>
+        </Modal>
       )}
 
       <ErrorBanner error={error} />
