@@ -5,7 +5,7 @@ import type { Database } from '../../../db/client';
 import { tenantAiAgentConfig } from '../../../db/schema';
 import { badRequest, serviceUnavailable } from '../../../common/errors';
 import { VoiceAdapterFactoryService } from '../../voice/voice-adapter-factory.service';
-import type { SetAiAgentDto, SetAiAgentModelDto } from './dto/ai-agent.dto';
+import type { SetAiAgentDto, SetAiAgentModelDto, SetAiAgentPromptDto, UploadDocumentDto } from './dto/ai-agent.dto';
 
 /**
  * Thin proxy onto LiveHub's AI Agents framework — every value here (agent
@@ -96,5 +96,51 @@ export class AiAgentService {
     const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
     await this.run(() => liveHub.updateAgentModel(agentId, dto.llm));
     return this.run(() => liveHub.getAgent(agentId));
+  }
+
+  async getPrompt(tenantId: string) {
+    const agentId = await this.requireAgentId(tenantId);
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const agent = await this.run(() => liveHub.getAgent(agentId));
+    return { prompt: agent.prompt };
+  }
+
+  async setPrompt(tenantId: string, dto: SetAiAgentPromptDto) {
+    const agentId = await this.requireAgentId(tenantId);
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    await this.run(() => liveHub.updateAgentPrompt(agentId, dto.prompt));
+    const agent = await this.run(() => liveHub.getAgent(agentId));
+    return { prompt: agent.prompt };
+  }
+
+  async listDocuments(tenantId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const documents = await this.run(() => liveHub.listDocuments());
+    return { documents };
+  }
+
+  async uploadDocument(tenantId: string, dto: UploadDocumentDto, file: Buffer, fileName: string) {
+    const agentId = await this.requireAgentId(tenantId);
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const document = await this.run(() => liveHub.uploadDocument(dto.name, dto.description, file, fileName));
+    const agent = await this.run(() => liveHub.getAgent(agentId));
+    await this.run(() => liveHub.updateAgentDocuments(agentId, [...agent.documents, document.id]));
+    return document;
+  }
+
+  async deleteDocument(tenantId: string, documentId: string) {
+    const agentId = await this.requireAgentId(tenantId);
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const agent = await this.run(() => liveHub.getAgent(agentId));
+    if (agent.documents.includes(documentId)) {
+      await this.run(() =>
+        liveHub.updateAgentDocuments(
+          agentId,
+          agent.documents.filter((id) => id !== documentId),
+        ),
+      );
+    }
+    await this.run(() => liveHub.deleteDocument(documentId));
+    return { ok: true };
   }
 }

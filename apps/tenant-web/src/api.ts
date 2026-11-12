@@ -439,6 +439,17 @@ export const credentialsApi = {
 export type AiAgentSummary = { id: string; name: string };
 export type AiAgentDetail = AiAgentSummary & { llm: string | null };
 export type AiAgentModel = { name: string; isRealtime: boolean; latencyMs: number | null };
+export type KnowledgeDocument = {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  fileNames: string[];
+  nFiles: number;
+  nChunks: number;
+  nTokens: number;
+  createdAt: string | null;
+};
 
 export const aiAgentApi = {
   getConfig: () => request<{ agentId: string | null }>('tenant/ai-agent', '/config'),
@@ -455,6 +466,22 @@ export const aiAgentApi = {
       method: 'PUT',
       body: JSON.stringify({ llm }),
     }),
+  getPrompt: () => request<{ prompt: string }>('tenant/ai-agent', '/prompt'),
+  setPrompt: (prompt: string) =>
+    request<{ prompt: string }>('tenant/ai-agent', '/prompt', {
+      method: 'PUT',
+      body: JSON.stringify({ prompt }),
+    }),
+  listDocuments: () => request<{ documents: KnowledgeDocument[] }>('tenant/ai-agent', '/documents'),
+  uploadDocument: (name: string, description: string, file: File) => {
+    const form = new FormData();
+    form.append('name', name);
+    if (description) form.append('description', description);
+    form.append('file', file);
+    return request<KnowledgeDocument>('tenant/ai-agent', '/documents', { method: 'POST', body: form });
+  },
+  deleteDocument: (id: string) =>
+    request<{ ok: boolean }>('tenant/ai-agent', `/documents/${id}`, { method: 'DELETE' }),
 };
 
 export type TeamMember = {

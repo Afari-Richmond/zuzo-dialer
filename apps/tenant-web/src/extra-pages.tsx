@@ -1,6 +1,7 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { Trash2, Upload } from 'lucide-react';
 import { aiAgentApi, credentialsApi, teamApi, ApiError } from './api';
-import { Btn, ErrorBanner, Field, Input, Select, Table, useLoad } from './ui';
+import { Btn, ErrorBanner, Field, Input, Select, Table, Textarea, useLoad } from './ui';
 
 /**
  * New pages with no equivalent in the original single-tenant app, which used
@@ -212,7 +213,184 @@ function AiAgentSection() {
         <ErrorBanner error={agentSaveError} />
       </div>
 
-      {config?.agentId && <AiAgentModelPicker key={config.agentId} />}
+      {config?.agentId && (
+        <>
+          <AiAgentModelPicker key={`model-${config.agentId}`} />
+          <AiAgentPromptEditor key={`prompt-${config.agentId}`} />
+          <AiAgentDocumentsSection key={`docs-${config.agentId}`} />
+        </>
+      )}
+    </div>
+  );
+}
+
+function AiAgentPromptEditor() {
+  const { data, error, loading, reload } = useLoad(() => aiAgentApi.getPrompt(), 'ai-agent-prompt');
+  const [prompt, setPrompt] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    if (data) setPrompt(data.prompt);
+  }, [data]);
+
+  function save() {
+    setSaving(true);
+    setSaveError(null);
+    setSaved(false);
+    aiAgentApi
+      .setPrompt(prompt)
+      .then(() => {
+        setSaved(true);
+        reload();
+      })
+      .catch((err: Error) => setSaveError(err instanceof ApiError ? err.message : err.message))
+      .finally(() => setSaving(false));
+  }
+
+  return (
+    <div className="border-t border-border pt-4">
+      {loading && !data && <p className="text-sm text-muted-foreground">Loading…</p>}
+      <ErrorBanner error={error} />
+      {data && (
+        <>
+          <Field label="System prompt">
+            <Textarea
+              rows={8}
+              value={prompt}
+              onChange={(e) => {
+                setPrompt(e.target.value);
+                setSaved(false);
+              }}
+              placeholder="Leave empty to run on the platform's default prompt…"
+            />
+          </Field>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            This defines how your AI agent behaves on every call. Use <code>{'{variable}'}</code> to reference
+            campaign variables.
+          </p>
+          {saved && <p className="mt-2 text-sm text-green-700">Prompt saved.</p>}
+          <div className="mt-2">
+            <Btn type="button" onClick={save} disabled={saving}>
+              {saving ? 'Saving…' : 'Save prompt'}
+            </Btn>
+            <ErrorBanner error={saveError} />
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function AiAgentDocumentsSection() {
+  const { data, error, loading, reload } = useLoad(() => aiAgentApi.listDocuments(), 'ai-agent-documents');
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  function upload(file: File) {
+    if (!name.trim()) {
+      setUploadError('Give the document a name first');
+      return;
+    }
+    setUploading(true);
+    setUploadError(null);
+    aiAgentApi
+      .uploadDocument(name.trim(), description.trim(), file)
+      .then(() => {
+        setName('');
+        setDescription('');
+        reload();
+      })
+      .catch((err: Error) => setUploadError(err instanceof ApiError ? err.message : err.message))
+      .finally(() => setUploading(false));
+  }
+
+  function remove(id: string) {
+    setDeletingId(id);
+    aiAgentApi
+      .deleteDocument(id)
+      .then(() => reload())
+      .finally(() => setDeletingId(null));
+  }
+
+  const documents = data?.documents ?? [];
+
+  return (
+    <div className="border-t border-border pt-4">
+      <h3 className="mb-1 text-sm font-semibold text-foreground">Knowledge base</h3>
+      <p className="mb-3 text-sm text-muted-foreground">
+        Documents your AI agent can search while on a call — policy documents, FAQs, pricing sheets.
+      </p>
+      <ErrorBanner error={error} />
+
+      <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-dashed border-input p-4">
+        <div className="min-w-40 flex-1">
+          <Field label="Name">
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Policy FAQ" />
+          </Field>
+        </div>
+        <div className="min-w-40 flex-1">
+          <Field label="Description (optional)">
+            <Input value={description} onChange={(e) => setDescription(e.target.value)} />
+          </Field>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) upload(file);
+            e.target.value = '';
+          }}
+        />
+        <Btn
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          className="flex items-center gap-2"
+        >
+          <Upload className="size-4" />
+          {uploading ? 'Uploading…' : 'Upload file'}
+        </Btn>
+      </div>
+      <ErrorBanner error={uploadError} />
+
+      {loading && !data && <p className="text-sm text-muted-foreground">Loading…</p>}
+      {documents.length === 0 && !loading && (
+        <p className="py-4 text-center text-sm text-muted-foreground">No documents uploaded yet.</p>
+      )}
+      {documents.length > 0 && (
+        <Table headers={['Name', 'Status', 'Files', 'Chunks', '']}>
+          {documents.map((d) => (
+            <tr key={d.id} className="border-t border-border">
+              <td className="px-5 py-3.5">
+                <div className="font-medium text-foreground">{d.name}</div>
+                {d.description && <div className="text-xs text-muted-foreground">{d.description}</div>}
+              </td>
+              <td className="px-5 py-3.5 text-muted-foreground">{d.status}</td>
+              <td className="px-5 py-3.5 text-muted-foreground">{d.nFiles}</td>
+              <td className="px-5 py-3.5 text-muted-foreground">{d.nChunks}</td>
+              <td className="px-5 py-3.5 text-right">
+                <button
+                  type="button"
+                  onClick={() => remove(d.id)}
+                  disabled={deletingId === d.id}
+                  title="Delete document"
+                  className="inline-flex size-8 cursor-pointer items-center justify-center rounded-full border border-input bg-card text-muted-foreground transition-colors hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Trash2 className="size-3.5" />
+                </button>
+              </td>
+            </tr>
+          ))}
+        </Table>
+      )}
     </div>
   );
 }

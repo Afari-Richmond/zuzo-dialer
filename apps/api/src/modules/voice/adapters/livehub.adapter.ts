@@ -18,12 +18,26 @@ export interface AiAgentSummary {
 
 export interface AiAgentDetail extends AiAgentSummary {
   llm: string | null;
+  prompt: string;
+  documents: string[];
 }
 
 export interface AiAgentModel {
   name: string;
   isRealtime: boolean;
   latencyMs: number | null;
+}
+
+export interface KnowledgeDocument {
+  id: string;
+  name: string;
+  description: string | null;
+  status: string;
+  fileNames: string[];
+  nFiles: number;
+  nChunks: number;
+  nTokens: number;
+  createdAt: string | null;
 }
 
 function toE164Ghana(local: string): string {
@@ -276,6 +290,17 @@ export class LiveHubAdapter implements VoiceProviderAdapter {
         Authorization: `Bearer ${token}`,
         ...(init.headers ?? {}),
       },
+    });
+  }
+
+  /** Like request(), but for multipart/form-data bodies — fetch must set its
+   * own Content-Type with the multipart boundary, so none is forced here. */
+  private async requestMultipart(path: string, body: FormData): Promise<Response> {
+    const token = await this.getToken();
+    return fetch(`${BASE_URL}${path}`, {
+      method: 'POST',
+      body,
+      headers: { Authorization: `Bearer ${token}` },
     });
   }
 
@@ -801,8 +826,20 @@ export class LiveHubAdapter implements VoiceProviderAdapter {
     if (!res.ok) {
       throw new Error(`LiveHub get agent failed (${res.status}): ${bodyText}`);
     }
-    const parsed = JSON.parse(bodyText) as { id: string; name: string; llm: string | null };
-    return { id: parsed.id, name: parsed.name, llm: parsed.llm ?? null };
+    const parsed = JSON.parse(bodyText) as {
+      id: string;
+      name: string;
+      llm: string | null;
+      prompt: string | null;
+      documents: string[] | null;
+    };
+    return {
+      id: parsed.id,
+      name: parsed.name,
+      llm: parsed.llm ?? null,
+      prompt: parsed.prompt ?? '',
+      documents: parsed.documents ?? [],
+    };
   }
 
   async updateAgentModel(agentId: string, llm: string): Promise<void> {
@@ -813,6 +850,28 @@ export class LiveHubAdapter implements VoiceProviderAdapter {
     const bodyText = await res.text();
     if (!res.ok) {
       throw new Error(`LiveHub update agent model failed (${res.status}): ${bodyText}`);
+    }
+  }
+
+  async updateAgentPrompt(agentId: string, prompt: string): Promise<void> {
+    const res = await this.request(`${AI_AGENTS_PATH}/agents/${agentId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ prompt }),
+    });
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub update agent prompt failed (${res.status}): ${bodyText}`);
+    }
+  }
+
+  async updateAgentDocuments(agentId: string, documentIds: string[]): Promise<void> {
+    const res = await this.request(`${AI_AGENTS_PATH}/agents/${agentId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ documents: documentIds }),
+    });
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub update agent documents failed (${res.status}): ${bodyText}`);
     }
   }
 
@@ -830,5 +889,60 @@ export class LiveHubAdapter implements VoiceProviderAdapter {
       isRealtime: m.is_realtime,
       latencyMs: m.latency_ms ?? null,
     }));
+  }
+
+  private static toKnowledgeDocument(d: {
+    id: string;
+    name: string;
+    description: string | null;
+    status: string;
+    file_names: string[] | null;
+    n_files: number;
+    n_chunks: number;
+    n_tokens: number;
+    created_at: string | null;
+  }): KnowledgeDocument {
+    return {
+      id: d.id,
+      name: d.name,
+      description: d.description ?? null,
+      status: d.status,
+      fileNames: d.file_names ?? [],
+      nFiles: d.n_files ?? 0,
+      nChunks: d.n_chunks ?? 0,
+      nTokens: d.n_tokens ?? 0,
+      createdAt: d.created_at ?? null,
+    };
+  }
+
+  async listDocuments(): Promise<KnowledgeDocument[]> {
+    const res = await this.request(`${AI_AGENTS_PATH}/documents?limit=200`);
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub list documents failed (${res.status}): ${bodyText}`);
+    }
+    const parsed = JSON.parse(bodyText) as { documents: Parameters<typeof LiveHubAdapter.toKnowledgeDocument>[0][] };
+    return (parsed.documents ?? []).map(LiveHubAdapter.toKnowledgeDocument);
+  }
+
+  async uploadDocument(name: string, description: string | undefined, file: Buffer, fileName: string): Promise<KnowledgeDocument> {
+    const form = new FormData();
+    form.append('name', name);
+    if (description) form.append('description', description);
+    form.append('file', new Blob([Uint8Array.from(file)]), fileName);
+    const res = await this.requestMultipart(`${AI_AGENTS_PATH}/documents/form`, form);
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub upload document failed (${res.status}): ${bodyText}`);
+    }
+    return LiveHubAdapter.toKnowledgeDocument(JSON.parse(bodyText));
+  }
+
+  async deleteDocument(documentId: string): Promise<void> {
+    const res = await this.request(`${AI_AGENTS_PATH}/documents/${documentId}`, { method: 'DELETE' });
+    if (!res.ok && res.status !== 404) {
+      const bodyText = await res.text();
+      throw new Error(`LiveHub delete document failed (${res.status}): ${bodyText}`);
+    }
   }
 }

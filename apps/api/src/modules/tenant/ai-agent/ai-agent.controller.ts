@@ -1,4 +1,18 @@
-import { Body, Controller, Get, Put, UseFilters, UseGuards, UseInterceptors } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  UploadedFile,
+  UseFilters,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { memoryStorage } from 'multer';
 import { TenantAuthGuard } from '../../auth/guards/tenant-auth.guard';
 import { TenantRoles, TenantRolesGuard } from '../../auth/guards/tenant-roles.guard';
 import { CurrentTenantActor } from '../../auth/current-actor.decorator';
@@ -6,7 +20,11 @@ import type { TenantActor } from '../../auth/jwt-types';
 import { ApiExceptionFilter } from '../../../common/filters/http-exception.filter';
 import { ResponseInterceptor } from '../../../common/interceptors/response.interceptor';
 import { AiAgentService } from './ai-agent.service';
-import { SetAiAgentDto, SetAiAgentModelDto } from './dto/ai-agent.dto';
+import { SetAiAgentDto, SetAiAgentModelDto, SetAiAgentPromptDto, UploadDocumentDto } from './dto/ai-agent.dto';
+import { badRequest } from '../../../common/errors';
+
+const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
+type MulterFileLike = { buffer: Buffer; originalname: string };
 
 @Controller('tenant/ai-agent')
 @UseGuards(TenantAuthGuard)
@@ -47,5 +65,42 @@ export class AiAgentController {
   @TenantRoles('tenant_admin')
   setModel(@CurrentTenantActor() actor: TenantActor, @Body() dto: SetAiAgentModelDto) {
     return this.aiAgent.setModel(actor.tenantId, dto);
+  }
+
+  @Get('prompt')
+  getPrompt(@CurrentTenantActor() actor: TenantActor) {
+    return this.aiAgent.getPrompt(actor.tenantId);
+  }
+
+  @Put('prompt')
+  @UseGuards(TenantRolesGuard)
+  @TenantRoles('tenant_admin')
+  setPrompt(@CurrentTenantActor() actor: TenantActor, @Body() dto: SetAiAgentPromptDto) {
+    return this.aiAgent.setPrompt(actor.tenantId, dto);
+  }
+
+  @Get('documents')
+  listDocuments(@CurrentTenantActor() actor: TenantActor) {
+    return this.aiAgent.listDocuments(actor.tenantId);
+  }
+
+  @Post('documents')
+  @UseGuards(TenantRolesGuard)
+  @TenantRoles('tenant_admin')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: MAX_DOCUMENT_BYTES } }))
+  uploadDocument(
+    @CurrentTenantActor() actor: TenantActor,
+    @Body() dto: UploadDocumentDto,
+    @UploadedFile() file?: MulterFileLike,
+  ) {
+    if (!file) throw badRequest('FILE_REQUIRED', 'Attach a file as "file"');
+    return this.aiAgent.uploadDocument(actor.tenantId, dto, file.buffer, file.originalname);
+  }
+
+  @Delete('documents/:id')
+  @UseGuards(TenantRolesGuard)
+  @TenantRoles('tenant_admin')
+  deleteDocument(@CurrentTenantActor() actor: TenantActor, @Param('id') id: string) {
+    return this.aiAgent.deleteDocument(actor.tenantId, id);
   }
 }
