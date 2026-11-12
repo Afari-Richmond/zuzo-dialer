@@ -78,10 +78,11 @@
   --sidebar-muted: #6b7a8f;
   --sidebar-active: #123a35;
 
-  /* Outer-page glow behind the floating app shell. */
-  --shell-bg-1: #0b1320;
-  --shell-bg-2: #0f2a28;
-  --shell-bg-3: #134e48;
+  /* Outer-page backdrop behind the floating app shell — a soft off-white,
+     not the dark teal glow this used to be. */
+  --shell-bg-1: #f7f7f8;
+  --shell-bg-2: #f0f1f2;
+  --shell-bg-3: #e8eaec;
 }
 
 html,
@@ -107,7 +108,7 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* Outer page: dark-to-teal glow the floating app shell sits on, matching the reference. */
+/* Outer page: a soft off-white the floating app shell sits on. */
 .app-shell-bg {
   background:
     radial-gradient(60% 50% at 8% 0%, var(--shell-bg-3) 0%, transparent 60%),

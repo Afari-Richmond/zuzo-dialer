@@ -62,7 +62,7 @@ export function App() {
 
   return (
     <div className="app-shell-bg flex min-h-screen items-start justify-center p-0 sm:p-4 lg:p-8">
-      <div className="flex min-h-screen w-full max-w-[90rem] overflow-hidden bg-card sm:min-h-[calc(100vh-4rem)] sm:rounded-[2rem] sm:shadow-[0_24px_64px_rgba(5,15,25,0.35)]">
+      <div className="flex min-h-screen w-full max-w-[90rem] overflow-hidden bg-card sm:min-h-[calc(100vh-4rem)] sm:rounded-[2rem] sm:shadow-[0_24px_64px_rgba(15,23,32,0.12)]">
         <aside className="hidden w-20 shrink-0 bg-sidebar lg:flex xl:w-64">
           <div className="sticky top-0 flex max-h-screen w-full flex-col overflow-y-auto px-3 py-6 xl:px-4">
             <div className="mb-8 flex items-center justify-center gap-3 px-1 xl:justify-start">
@@ -150,7 +150,7 @@ function Login({ onOk }: { onOk: () => void }) {
     <div className="app-shell-bg flex min-h-full items-center justify-center p-6">
       <form
         onSubmit={submit}
-        className="w-full max-w-sm rounded-[1.75rem] bg-card p-8 shadow-[0_24px_64px_rgba(5,15,25,0.35)]"
+        className="w-full max-w-sm rounded-[1.75rem] bg-card p-8 shadow-[0_24px_64px_rgba(15,23,32,0.12)]"
       >
         <div className="mb-6 flex items-center gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
