@@ -29,7 +29,7 @@ export function TenantsPage() {
   const { data: overview } = useLoad(() => statsApi.overview(), 'platform-stats', 15000);
   const [showCreate, setShowCreate] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [invitedEmail, setInvitedEmail] = useState<string | null>(null);
+  const [newCredentials, setNewCredentials] = useState<{ email: string; password: string } | null>(null);
 
   return (
     <div>
@@ -38,18 +38,14 @@ export function TenantsPage() {
         <Btn
           onClick={() => {
             setShowCreate((v) => !v);
-            setInvitedEmail(null);
+            setNewCredentials(null);
           }}
         >
           {showCreate ? 'Cancel' : 'New tenant'}
         </Btn>
       </div>
 
-      {invitedEmail && (
-        <p className="mb-6 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">
-          Tenant created — an invitation to set up their admin account was sent to {invitedEmail}.
-        </p>
-      )}
+      {newCredentials && <NewCredentialsBanner credentials={newCredentials} onDismiss={() => setNewCredentials(null)} />}
 
       {overview && (
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -62,9 +58,9 @@ export function TenantsPage() {
 
       {showCreate && (
         <CreateTenantForm
-          onCreated={(adminEmail) => {
+          onCreated={(credentials) => {
             setShowCreate(false);
-            setInvitedEmail(adminEmail);
+            setNewCredentials(credentials);
             reload();
           }}
         />
@@ -266,7 +262,59 @@ function TenantAdminPanel({ tenantId, onSaved }: { tenantId: string; onSaved: ()
   );
 }
 
-function CreateTenantForm({ onCreated }: { onCreated: (adminEmail: string) => void }) {
+function NewCredentialsBanner({
+  credentials,
+  onDismiss,
+}: {
+  credentials: { email: string; password: string };
+  onDismiss: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  function copy() {
+    navigator.clipboard
+      .writeText(`Email: ${credentials.email}\nPassword: ${credentials.password}`)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      });
+  }
+
+  return (
+    <div className="mb-6 rounded-xl border border-green-200 bg-green-50 p-5">
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-semibold text-green-800">Tenant created and ready to log in</p>
+          <p className="text-sm text-green-700">
+            Hand these credentials to the client directly — this is the only time the password is shown.
+          </p>
+        </div>
+        <button type="button" onClick={onDismiss} className="cursor-pointer text-sm text-green-700 hover:underline">
+          Dismiss
+        </button>
+      </div>
+      <div className="flex flex-wrap items-center gap-4 rounded-lg border border-green-200 bg-card px-4 py-3">
+        <div className="text-sm">
+          <span className="text-muted-foreground">Email: </span>
+          <span className="font-medium text-foreground">{credentials.email}</span>
+        </div>
+        <div className="text-sm">
+          <span className="text-muted-foreground">Password: </span>
+          <span className="font-mono font-medium text-foreground">{credentials.password}</span>
+        </div>
+        <Btn kind="ghost" type="button" onClick={copy}>
+          {copied ? 'Copied' : 'Copy both'}
+        </Btn>
+      </div>
+    </div>
+  );
+}
+
+function CreateTenantForm({
+  onCreated,
+}: {
+  onCreated: (credentials: { email: string; password: string }) => void;
+}) {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
   const [adminEmail, setAdminEmail] = useState('');
@@ -280,7 +328,7 @@ function CreateTenantForm({ onCreated }: { onCreated: (adminEmail: string) => vo
     setError(null);
     tenantsApi
       .create({ name, slug, adminEmail, adminDisplayName })
-      .then((res) => onCreated(res.adminUser.email))
+      .then((res) => onCreated({ email: res.adminUser.email, password: res.adminPassword }))
       .catch((err: Error) => setError(err instanceof ApiError ? err.message : err.message))
       .finally(() => setSaving(false));
   }
@@ -319,7 +367,7 @@ function CreateTenantForm({ onCreated }: { onCreated: (adminEmail: string) => vo
         </Field>
       </div>
       <Btn type="submit" disabled={saving}>
-        {saving ? 'Creating…' : 'Create & invite admin'}
+        {saving ? 'Creating…' : 'Create tenant'}
       </Btn>
       <ErrorBanner error={error} />
     </form>

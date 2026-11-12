@@ -58,7 +58,7 @@ export type TenantAdminSettings = {
 export const tenants = {
   list: (q?: string) => request<{ tenants: Tenant[] }>(`/platform/tenants${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   create: (dto: { name: string; slug: string; adminEmail: string; adminDisplayName: string }) =>
-    request<{ tenant: Tenant; adminUser: { email: string } }>('/platform/tenants', {
+    request<{ tenant: Tenant; adminUser: { email: string }; adminPassword: string }>('/platform/tenants', {
       method: 'POST',
       body: JSON.stringify(dto),
     }),

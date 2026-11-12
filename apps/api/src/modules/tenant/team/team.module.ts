@@ -9,6 +9,5 @@ import { TeamService } from './team.service';
   imports: [AuthModule, EmailModule, TenantAuthModule],
   controllers: [TeamController],
   providers: [TeamService],
-  exports: [TeamService],
 })
 export class TeamModule {}

@@ -1,16 +1,26 @@
+import { randomBytes } from 'crypto';
 import { Inject, Injectable } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { and, eq, ilike, or } from 'drizzle-orm';
 import { DRIZZLE } from '../../../db/database.module';
 import type { Database } from '../../../db/client';
-import { tenants } from '../../../db/schema';
+import { tenants, tenantUsers } from '../../../db/schema';
 import { conflict, notFound } from '../../../common/errors';
-import { TeamService } from '../../tenant/team/team.service';
 import type {
   CreateTenantDto,
   ListTenantsQueryDto,
   UpdateTenantAdminSettingsDto,
   UpdateTenantDto,
 } from './dto/tenant.dto';
+
+const PASSWORD_HASH_ROUNDS = 12;
+
+/** Readable, high-entropy password — base64url of 9 random bytes gives 12
+ * characters with no ambiguous padding, shown once to the platform admin to
+ * hand to the client directly instead of routing through an email flow. */
+function generatePassword(): string {
+  return randomBytes(9).toString('base64url');
+}
 
 export interface TenantAdminSettings {
   plan: 'trial' | 'starter' | 'growth' | 'scale' | 'custom';
@@ -35,10 +45,7 @@ function readAdminSettings(settings: unknown): TenantAdminSettings {
 
 @Injectable()
 export class TenantsService {
-  constructor(
-    @Inject(DRIZZLE) private readonly db: Database,
-    private readonly team: TeamService,
-  ) {}
+  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
   async list(query: ListTenantsQueryDto) {
     const conditions = [
@@ -65,26 +72,37 @@ export class TenantsService {
       .limit(1);
     if (existing) throw conflict('TENANT_SLUG_TAKEN', 'That slug is already in use');
 
+    const [existingUser] = await this.db
+      .select({ id: tenantUsers.id })
+      .from(tenantUsers)
+      .where(eq(tenantUsers.email, dto.adminEmail.toLowerCase()))
+      .limit(1);
+    if (existingUser) throw conflict('EMAIL_TAKEN', 'A user with that email already exists');
+
     const [tenant] = await this.db
       .insert(tenants)
       .values({ name: dto.name, slug: dto.slug })
       .returning();
 
     // A tenant with no admin is a dead end — nobody could ever log into it —
-    // so the first admin is invited as part of creation, not a separate
-    // manual step. If the invite fails (e.g. email already in use), the
-    // tenant row is rolled back rather than left orphaned with no way in.
-    try {
-      const { user } = await this.team.invite(tenant.id, {
-        email: dto.adminEmail,
+    // so the first admin is created, active, right here as part of tenant
+    // creation. No email round-trip: the platform admin sets this tenant up
+    // directly and hands the generated password to the client themselves.
+    const password = generatePassword();
+    const passwordHash = await bcrypt.hash(password, PASSWORD_HASH_ROUNDS);
+    const [adminUser] = await this.db
+      .insert(tenantUsers)
+      .values({
+        tenantId: tenant.id,
+        email: dto.adminEmail.toLowerCase(),
+        passwordHash,
         displayName: dto.adminDisplayName,
         role: 'tenant_admin',
-      });
-      return { tenant, adminUser: user };
-    } catch (err) {
-      await this.db.delete(tenants).where(eq(tenants.id, tenant.id));
-      throw err;
-    }
+        status: 'active',
+      })
+      .returning({ id: tenantUsers.id, email: tenantUsers.email, displayName: tenantUsers.displayName });
+
+    return { tenant, adminUser, adminPassword: password };
   }
 
   async update(id: string, dto: UpdateTenantDto) {
