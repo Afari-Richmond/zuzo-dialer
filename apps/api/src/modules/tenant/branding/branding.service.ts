@@ -11,6 +11,10 @@ export interface TenantBranding {
   primaryColor: string | null;
 }
 
+export interface TenantBrandingWithName extends TenantBranding {
+  name: string;
+}
+
 function readBranding(settings: unknown): TenantBranding {
   const branding = (settings as { branding?: Partial<TenantBranding> } | null)?.branding ?? {};
   return {
@@ -23,14 +27,14 @@ function readBranding(settings: unknown): TenantBranding {
 export class BrandingService {
   constructor(@Inject(DRIZZLE) private readonly db: Database) {}
 
-  async get(tenantId: string): Promise<TenantBranding> {
+  async get(tenantId: string): Promise<TenantBrandingWithName> {
     const [row] = await this.db
-      .select({ settings: tenants.settings })
+      .select({ name: tenants.name, settings: tenants.settings })
       .from(tenants)
       .where(eq(tenants.id, tenantId))
       .limit(1);
     if (!row) throw notFound('TENANT_NOT_FOUND', 'Tenant not found');
-    return readBranding(row.settings);
+    return { name: row.name, ...readBranding(row.settings) };
   }
 
   async update(tenantId: string, dto: UpdateBrandingDto): Promise<TenantBranding> {

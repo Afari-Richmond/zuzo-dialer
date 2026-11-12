@@ -418,9 +418,10 @@ export type TelephonyCredential = {
 };
 
 export type TenantBranding = { logoUrl: string | null; primaryColor: string | null };
+export type TenantBrandingWithName = TenantBranding & { name: string };
 
 export const brandingApi = {
-  get: () => request<TenantBranding>('tenant/branding', ''),
+  get: () => request<TenantBrandingWithName>('tenant/branding', ''),
   update: (dto: { logoUrl?: string; primaryColor?: string }) =>
     request<TenantBranding>('tenant/branding', '', { method: 'PUT', body: JSON.stringify(dto) }),
 };

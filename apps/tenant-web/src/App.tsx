@@ -78,6 +78,7 @@ export function App() {
   const [route, setRoute] = useState<Route>(routeFromPath);
   const [path, setPath] = useState(window.location.pathname);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [tenantName, setTenantName] = useState<string | null>(null);
 
   useEffect(() => {
     api
@@ -93,6 +94,7 @@ export function App() {
       .then((branding) => {
         applyBrandColor(branding.primaryColor);
         setLogoUrl(branding.logoUrl);
+        setTenantName(branding.name);
       })
       .catch(() => {});
   }, [authed]);
@@ -156,12 +158,12 @@ export function App() {
                 />
               ) : (
                 <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
-                  Z
+                  {(tenantName ?? '?').charAt(0).toUpperCase()}
                 </div>
               )}
               <div className="hidden min-w-0 xl:block">
                 <div className="truncate text-xs font-medium uppercase tracking-wide text-primary-glow">
-                  ZuZo Insure
+                  {tenantName ?? ' '}
                 </div>
                 <div className="truncate text-sm font-semibold text-sidebar-foreground">
                   Outreach
@@ -266,14 +268,9 @@ function Login({ onOk }: { onOk: () => void }) {
       >
         <div className="mb-6 flex items-center gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
-            Z
+            O
           </div>
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-primary">
-              ZuZo Insure
-            </div>
-            <div className="text-sm font-semibold text-foreground">Outreach</div>
-          </div>
+          <div className="text-sm font-semibold text-foreground">Outreach</div>
         </div>
         <h1 className="mb-1 font-heading text-xl font-bold text-foreground">Sign in</h1>
         <p className="mb-5 text-sm text-muted-foreground">
