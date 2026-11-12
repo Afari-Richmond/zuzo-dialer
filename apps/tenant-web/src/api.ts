@@ -331,6 +331,19 @@ export const api = {
     request<{ deleted: boolean }>('outreach', `/campaigns/${id}`, { method: 'DELETE' }),
   campaignTargets: (id: string) =>
     request<{ targets: CampaignTarget[] }>('outreach', `/campaigns/${id}/targets`),
+  addTarget: (campaignId: string, input: { targetNumber: string; tag?: string; reason?: string }) =>
+    request<{ targetId?: string }>('outreach', `/campaigns/${campaignId}/targets`, {
+      method: 'POST',
+      body: JSON.stringify(input),
+    }),
+  importTargets: (campaignId: string, file: File) => {
+    const form = new FormData();
+    form.append('file', file);
+    return request<UploadResult>('outreach', `/campaigns/${campaignId}/targets/import`, {
+      method: 'POST',
+      body: form,
+    });
+  },
   enableTarget: (campaignId: string, targetId: string) =>
     request<{ enabled: boolean }>(
       'outreach',

@@ -8,7 +8,9 @@ import { badRequest } from '../../../common/errors';
 import { VoiceAdapterFactoryService } from '../../voice/voice-adapter-factory.service';
 import type { CallRecord, PostCallAnalysisResult } from '../../voice/adapters/livehub.adapter';
 import { OutreachDialService } from './outreach-dial.service';
+import { normalizeGhanaPhone } from './phone';
 import type {
+  AddTargetDto,
   CreateCampaignDto,
   OutreachDncDto,
   SetAiContextDto,
@@ -134,6 +136,123 @@ export class OutreachService {
     const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
     await liveHub.setTargetEnabled(campaignId, targetId, enabled);
     return { enabled };
+  }
+
+  /** The "Add new target" action on the Target List tab — adds one target
+   * directly to the campaign, DNC-checked, with the campaign's own AI
+   * context plus this target's reason carried as botMetadata (same shape
+   * the regular upload→dial pipeline already sends). */
+  async addTarget(tenantId: string, campaignId: string, dto: AddTargetDto) {
+    const normalized = normalizeGhanaPhone(dto.targetNumber);
+    if (!normalized) throw badRequest('INVALID_PHONE', 'Need a Ghana phone number');
+    if (await this.dial.isDnc(tenantId, normalized)) {
+      throw badRequest('DNC_BLOCKED', 'This number is on the do-not-call list');
+    }
+    const { aiContext } = await this.getAiContext(tenantId, campaignId);
+    const metadata = {
+      ...(dto.reason ? { reason: dto.reason } : {}),
+      ...(aiContext ? { campaignContext: aiContext } : {}),
+    };
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    let result: { result: string; targetID?: string } | undefined;
+    try {
+      [result] = await liveHub.addTargetsToCampaign(campaignId, [
+        {
+          targetNumber: normalized,
+          tag: dto.tag,
+          botMetadata: Object.keys(metadata).length ? JSON.stringify(metadata) : undefined,
+        },
+      ]);
+    } catch (err) {
+      throw badRequest('LIVEHUB_REJECTED', (err as Error).message);
+    }
+    if (!result || result.result !== 'Success') {
+      throw badRequest('TARGET_REJECTED', `Target was rejected: ${result?.result ?? 'unknown error'}`);
+    }
+    return { targetId: result.targetID };
+  }
+
+  /**
+   * The "Import" action on the Target List tab — bulk-adds targets straight
+   * to a campaign from a spreadsheet, DNC-checked per row. Deliberately
+   * additive only (appends via addTargetsToCampaign), unlike LiveHub's own
+   * native Import which replaces the entire existing target list — that
+   * replace-all behavior would silently wipe a live campaign's real
+   * targets, so it's not exposed here.
+   */
+  async importTargets(tenantId: string, campaignId: string, buffer: Buffer) {
+    let rows: Record<string, unknown>[];
+    try {
+      const workbook = XLSX.read(buffer, { type: 'buffer' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      rows = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+    } catch {
+      throw badRequest('INVALID_FILE', 'Could not parse the uploaded file as Excel/CSV');
+    }
+    if (rows.length === 0) throw badRequest('EMPTY_FILE', 'No rows found in the uploaded file');
+    if (rows.length > MAX_ROWS) throw badRequest('TOO_MANY_ROWS', `Max ${MAX_ROWS} targets per import`);
+
+    const phoneKey = findKey(rows[0], PHONE_HEADERS);
+    if (!phoneKey) {
+      throw badRequest('MISSING_PHONE_COLUMN', 'Could not find a phone column (expected a header like "phone")');
+    }
+    const reasonKey = findKey(rows[0], REASON_HEADERS);
+
+    const { aiContext } = await this.getAiContext(tenantId, campaignId);
+    const parsed = rows.map((row, index) => {
+      const phone = normalizeGhanaPhone(String(row[phoneKey] ?? '').trim());
+      const reason = reasonKey ? String(row[reasonKey] ?? '').trim() : '';
+      return { row: index + 2, phone, reason: reason || undefined };
+    });
+
+    const results: { row: number; phone?: string; accepted: boolean; reason?: string }[] = [];
+    const toAdd: { row: number; targetNumber: string; botMetadata?: string }[] = [];
+    for (const r of parsed) {
+      if (!r.phone) {
+        results.push({ row: r.row, accepted: false, reason: 'invalid_phone' });
+        continue;
+      }
+      if (await this.dial.isDnc(tenantId, r.phone)) {
+        results.push({ row: r.row, phone: r.phone, accepted: false, reason: 'dnc' });
+        continue;
+      }
+      const metadata = {
+        ...(r.reason ? { reason: r.reason } : {}),
+        ...(aiContext ? { campaignContext: aiContext } : {}),
+      };
+      toAdd.push({
+        row: r.row,
+        targetNumber: r.phone,
+        botMetadata: Object.keys(metadata).length ? JSON.stringify(metadata) : undefined,
+      });
+    }
+
+    if (toAdd.length > 0) {
+      const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+      let liveHubResults: { result: string; targetID?: string }[];
+      try {
+        liveHubResults = await liveHub.addTargetsToCampaign(
+          campaignId,
+          toAdd.map((t) => ({ targetNumber: t.targetNumber, botMetadata: t.botMetadata })),
+        );
+      } catch (err) {
+        throw badRequest('LIVEHUB_REJECTED', (err as Error).message);
+      }
+      toAdd.forEach((t, i) => {
+        const lhResult = liveHubResults[i];
+        const accepted = !!lhResult && lhResult.result === 'Success';
+        results.push({
+          row: t.row,
+          phone: t.targetNumber,
+          accepted,
+          reason: accepted ? undefined : (lhResult?.result ?? 'rejected'),
+        });
+      });
+    }
+
+    results.sort((a, b) => a.row - b.row);
+    const accepted = results.filter((r) => r.accepted).length;
+    return { accepted, rejected: results.length - accepted, results };
   }
 
   /**

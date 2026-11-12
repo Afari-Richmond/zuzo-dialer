@@ -16,6 +16,7 @@ import {
   Plus,
   Search,
   SlidersHorizontal,
+  Upload,
   X,
 } from 'lucide-react';
 import { navigate } from './nav';
@@ -402,12 +403,46 @@ const STATUS_OPTIONS = [
 /** Live LiveHub campaign health for one campaign — silently absent (not an
  * ErrorBanner) if the fetch fails, since that's a normal/expected mode when
  * VOICE_PROVIDER isn't livehub. */
+function targetsToCsv(targets: CampaignTarget[]): string {
+  const lines = ['Target phone number,Bot name,Number of retries,Last failure reason,Status'];
+  for (const t of targets) {
+    const cells = [
+      t.setting.targetNumber.replace(/^tel:/, ''),
+      t.setting.botDisplayName ?? '',
+      String(t.status.numOfRetries ?? 0),
+      t.status.lastFailureReason ?? 'N/A',
+      t.status.status,
+    ];
+    lines.push(cells.map((c) => `"${c.replace(/"/g, '""')}"`).join(','));
+  }
+  return lines.join('\n');
+}
+
+function downloadTargetsCsv(campaignId: string, targets: CampaignTarget[]) {
+  const blob = new Blob([targetsToCsv(targets)], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${campaignId}-targets.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function TargetsList({ campaignId }: { campaignId: string }) {
   const { data, error, loading, reload } = useLoad(
     () => api.campaignTargets(campaignId).then((d) => d.targets),
     `campaign-targets:${campaignId}`,
   );
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [showAdd, setShowAdd] = useState(false);
+  const [newNumber, setNewNumber] = useState('');
+  const [newReason, setNewReason] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+  const [adding, setAdding] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<{ accepted: number; rejected: number } | null>(null);
+  const [importing, setImporting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   function toggleTarget(t: CampaignTarget) {
     setBusyId(t.targetID);
@@ -417,38 +452,148 @@ function TargetsList({ campaignId }: { campaignId: string }) {
     call.then(() => reload()).finally(() => setBusyId(null));
   }
 
-  if (loading) return <p className="mt-4 text-xs text-muted-foreground">Loading targets…</p>;
-  if (error) return <ErrorBanner error={error} />;
-  const targets = data ?? [];
-  if (targets.length === 0) {
-    return <p className="mt-4 text-xs text-muted-foreground">No targets on this campaign yet.</p>;
+  function addTarget(e: FormEvent) {
+    e.preventDefault();
+    setAdding(true);
+    setAddError(null);
+    api
+      .addTarget(campaignId, { targetNumber: newNumber.trim(), reason: newReason.trim() || undefined })
+      .then(() => {
+        setNewNumber('');
+        setNewReason('');
+        setShowAdd(false);
+        reload();
+      })
+      .catch((err: Error) => setAddError(err.message))
+      .finally(() => setAdding(false));
   }
 
+  function importFile(file: File) {
+    setImporting(true);
+    setImportError(null);
+    setImportResult(null);
+    api
+      .importTargets(campaignId, file)
+      .then((result) => {
+        setImportResult({ accepted: result.accepted, rejected: result.rejected });
+        reload();
+      })
+      .catch((err: Error) => setImportError(err.message))
+      .finally(() => setImporting(false));
+  }
+
+  const targets = data ?? [];
+
   return (
-    <div className="mt-4 overflow-hidden rounded-xl border border-border">
-      <div className="max-h-72 divide-y divide-border overflow-y-auto">
-        {targets.map((t) => (
-          <div key={t.targetID} className="flex items-center gap-3 bg-card px-4 py-2.5 text-sm">
-            <span className="min-w-0 flex-1 truncate font-medium text-foreground">
-              {t.setting.targetNumber.replace(/^tel:/, '')}
-            </span>
-            <span className="shrink-0 text-xs text-muted-foreground">{t.status.status}</span>
-            {t.status.lastFailureReason && t.status.lastFailureReason.trim() !== 'N/A' && (
-              <span className="shrink-0 text-xs text-destructive">
-                {t.status.lastFailureReason}
-              </span>
-            )}
-            <Btn
-              kind={t.setting.enabled ? 'danger' : 'primary'}
-              onClick={() => toggleTarget(t)}
-              disabled={busyId === t.targetID}
-              className="shrink-0"
-            >
-              {busyId === t.targetID ? '…' : t.setting.enabled ? 'Disable' : 'Enable'}
+    <div className="mt-4">
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.csv"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) importFile(file);
+            e.target.value = '';
+          }}
+        />
+        <Btn
+          type="button"
+          kind="ghost"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={importing}
+        >
+          <Upload className="size-4" />
+          {importing ? 'Importing…' : 'Import'}
+        </Btn>
+        <Btn
+          type="button"
+          kind="ghost"
+          onClick={() => downloadTargetsCsv(campaignId, targets)}
+          disabled={targets.length === 0}
+        >
+          <Download className="size-4" />
+          Export
+        </Btn>
+        <Btn type="button" onClick={() => setShowAdd((v) => !v)}>
+          <Plus className="size-4" />
+          Add new target
+        </Btn>
+      </div>
+
+      <ErrorBanner error={importError} />
+      {importResult && (
+        <p className="mb-3 text-xs text-muted-foreground">
+          Imported {importResult.accepted} target{importResult.accepted === 1 ? '' : 's'}
+          {importResult.rejected > 0 ? `, skipped ${importResult.rejected} (DNC or invalid)` : ''}.
+        </p>
+      )}
+
+      {showAdd && (
+        <form onSubmit={addTarget} className="card-surface mb-3 grid gap-3 p-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Target phone number">
+              <Input
+                value={newNumber}
+                onChange={(e) => setNewNumber(e.target.value)}
+                placeholder="e.g. 0244123456"
+                required
+                autoFocus
+              />
+            </Field>
+            <Field label="Reason (optional)">
+              <Input
+                value={newReason}
+                onChange={(e) => setNewReason(e.target.value)}
+                placeholder="e.g. Renewal reminder"
+              />
+            </Field>
+          </div>
+          <ErrorBanner error={addError} />
+          <div className="flex gap-2">
+            <Btn type="submit" disabled={adding}>
+              {adding ? 'Adding…' : 'Add target'}
+            </Btn>
+            <Btn type="button" kind="ghost" onClick={() => setShowAdd(false)} disabled={adding}>
+              Cancel
             </Btn>
           </div>
-        ))}
-      </div>
+        </form>
+      )}
+
+      {loading && !data && <p className="text-xs text-muted-foreground">Loading targets…</p>}
+      <ErrorBanner error={error} />
+      {!loading && targets.length === 0 && (
+        <p className="text-xs text-muted-foreground">No targets on this campaign yet.</p>
+      )}
+      {targets.length > 0 && (
+        <div className="overflow-hidden rounded-xl border border-border">
+          <div className="max-h-72 divide-y divide-border overflow-y-auto">
+            {targets.map((t) => (
+              <div key={t.targetID} className="flex items-center gap-3 bg-card px-4 py-2.5 text-sm">
+                <span className="min-w-0 flex-1 truncate font-medium text-foreground">
+                  {t.setting.targetNumber.replace(/^tel:/, '')}
+                </span>
+                <span className="shrink-0 text-xs text-muted-foreground">{t.status.status}</span>
+                {t.status.lastFailureReason && t.status.lastFailureReason.trim() !== 'N/A' && (
+                  <span className="shrink-0 text-xs text-destructive">
+                    {t.status.lastFailureReason}
+                  </span>
+                )}
+                <Btn
+                  kind={t.setting.enabled ? 'danger' : 'primary'}
+                  onClick={() => toggleTarget(t)}
+                  disabled={busyId === t.targetID}
+                  className="shrink-0"
+                >
+                  {busyId === t.targetID ? '…' : t.setting.enabled ? 'Disable' : 'Enable'}
+                </Btn>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1209,6 +1354,7 @@ function CampaignForm({
   const [machineDetection, setMachineDetection] = useState<MachineDetection>(
     initial?.detectionCapabilities.machineDetection ?? 'Disabled',
   );
+  const [aiContext, setAiContext] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1250,15 +1396,26 @@ function CampaignForm({
     };
     setSubmitting(true);
     setError(null);
-    const req =
-      mode === 'create'
-        ? api.createCampaign({ campaignName: campaignName.trim(), ...common, lockOnCreate: locked })
-        : api.updateCampaign(campaignId!, { ...common, locked });
-    req
-      .then(() => {
-        if (mode === 'create') setCampaignName('');
-        onSaved();
-      })
+    if (mode === 'create') {
+      api
+        .createCampaign({ campaignName: campaignName.trim(), ...common, lockOnCreate: locked })
+        .then((created) =>
+          aiContext.trim()
+            ? api.setAiContext(created.campaignID, aiContext.trim()).then(() => created)
+            : created,
+        )
+        .then(() => {
+          setCampaignName('');
+          setAiContext('');
+          onSaved();
+        })
+        .catch((err: Error) => setError(err.message))
+        .finally(() => setSubmitting(false));
+      return;
+    }
+    api
+      .updateCampaign(campaignId!, { ...common, locked })
+      .then(() => onSaved())
       .catch((err: Error) => setError(err.message))
       .finally(() => setSubmitting(false));
   }
@@ -1495,11 +1652,25 @@ function CampaignForm({
         </div>
       </FormSection>
 
-      {mode === 'edit' && campaignId && (
-        <FormSection title="AI Agent Context">
+      <FormSection title="AI Agent Context">
+        {mode === 'edit' && campaignId ? (
           <AiContextEditor campaignId={campaignId} />
-        </FormSection>
-      )}
+        ) : (
+          <>
+            <Hint>
+              Describe what this campaign is about so the AI bot knows how to talk to
+              contacts — industry, product, tone, key talking points. Combined with each
+              contact's own reason at call time. Saved once the campaign is created.
+            </Hint>
+            <Textarea
+              rows={4}
+              value={aiContext}
+              onChange={(e) => setAiContext(e.target.value)}
+              placeholder="e.g. This is a car insurance renewal reminder campaign for Ghanaian customers. Be warm, concise, and quote amounts in GHS."
+            />
+          </>
+        )}
+      </FormSection>
 
       <div className="flex gap-2">
         {mode === 'edit' && onCancel && (

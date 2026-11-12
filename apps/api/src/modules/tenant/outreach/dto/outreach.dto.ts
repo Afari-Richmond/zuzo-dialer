@@ -29,6 +29,23 @@ export class UploadBatchDto {
   liveHubCampaignId?: string;
 }
 
+export class AddTargetDto {
+  @IsString()
+  @MinLength(9)
+  @MaxLength(20)
+  targetNumber!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  tag?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  reason?: string;
+}
+
 export class OutreachAttemptsQueryDto {
   @IsOptional()
   @IsString()

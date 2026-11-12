@@ -367,6 +367,41 @@ export class LiveHubAdapter implements VoiceProviderAdapter {
   }
 
   /**
+   * Adds one or more targets directly to a campaign's target list — the
+   * "Add new target" / additive "Import" actions on LiveHub's own Target
+   * List screen. Deliberately append-only: LiveHub's own Import endpoint
+   * replaces every existing target on the campaign, which would wipe a live
+   * campaign's real target list if used carelessly, so this always goes
+   * through Add targets (POST, appends) instead.
+   */
+  async addTargetsToCampaign(
+    campaignId: string,
+    targets: { targetNumber: string; tag?: string; botName?: string; botMetadata?: string; enabled?: boolean }[],
+  ): Promise<{ result: string; targetID?: string }[]> {
+    const res = await this.request(`/api/v1/campaignDialer/campaigns/${campaignId}/targets`, {
+      method: 'POST',
+      body: JSON.stringify({
+        targets: targets.map((t) => ({
+          targetNumber: `tel:${toE164Ghana(t.targetNumber)}`,
+          callingNumber: 'Anonymous',
+          enabled: t.enabled ?? true,
+          ...(t.tag ? { tag: t.tag } : {}),
+          ...(t.botName ? { botName: t.botName } : {}),
+          ...(t.botMetadata ? { botMetadata: t.botMetadata } : {}),
+        })),
+      }),
+    });
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub add-targets failed (${res.status}): ${bodyText}`);
+    }
+    const parsed = JSON.parse(bodyText) as
+      | { result: string; targetID?: string }[]
+      | { targets: { result: string; targetID?: string }[] };
+    return Array.isArray(parsed) ? parsed : (parsed.targets ?? []);
+  }
+
+  /**
    * Campaign Dialer has no per-call status push and no single-target GET, so
    * reconciling 'dialing' attempts means listing every target on the given
    * campaign and matching on targetID (stored as providerCallId at dial

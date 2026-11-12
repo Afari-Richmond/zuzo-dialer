@@ -22,6 +22,7 @@ import { TenantAuthGuard } from '../../auth/guards/tenant-auth.guard';
 import { CurrentTenantActor } from '../../auth/current-actor.decorator';
 import type { TenantActor } from '../../auth/jwt-types';
 import {
+  AddTargetDto,
   AnalyticsOverviewQueryDto,
   CallNowDto,
   CreateCampaignDto,
@@ -155,6 +156,22 @@ export class OutreachController {
   async listTargets(@CurrentTenantActor() actor: TenantActor, @Param('id') id: string) {
     const targets = await this.outreach.listTargets(actor.tenantId, id);
     return { targets };
+  }
+
+  @Post('campaigns/:id/targets')
+  addTarget(@CurrentTenantActor() actor: TenantActor, @Param('id') id: string, @Body() dto: AddTargetDto) {
+    return this.outreach.addTarget(actor.tenantId, id, dto);
+  }
+
+  @Post('campaigns/:id/targets/import')
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: MAX_FILE_BYTES } }))
+  importTargets(
+    @CurrentTenantActor() actor: TenantActor,
+    @Param('id') id: string,
+    @UploadedFile() file?: MulterFileLike,
+  ) {
+    if (!file) throw badRequest('FILE_REQUIRED', 'Attach an .xlsx or .csv file as "file"');
+    return this.outreach.importTargets(actor.tenantId, id, file.buffer);
   }
 
   @Post('campaigns/:id/targets/:targetId/enable')
