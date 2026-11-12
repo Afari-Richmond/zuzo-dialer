@@ -503,6 +503,8 @@ function TargetsList({ campaignId }: { campaignId: string }) {
           kind="ghost"
           onClick={() => fileInputRef.current?.click()}
           disabled={importing}
+          className="flex items-center gap-2"
+          style={{ paddingLeft: '1.25rem', paddingRight: '1.25rem', paddingTop: '0.75rem', paddingBottom: '0.75rem' }}
         >
           <Upload className="size-4" />
           {importing ? 'Importing…' : 'Import'}
@@ -512,11 +514,18 @@ function TargetsList({ campaignId }: { campaignId: string }) {
           kind="ghost"
           onClick={() => downloadTargetsCsv(campaignId, targets)}
           disabled={targets.length === 0}
+          className="flex items-center gap-2"
+          style={{ paddingLeft: '1.25rem', paddingRight: '1.25rem', paddingTop: '0.75rem', paddingBottom: '0.75rem' }}
         >
           <Download className="size-4" />
           Export
         </Btn>
-        <Btn type="button" onClick={() => setShowAdd((v) => !v)}>
+        <Btn
+          type="button"
+          onClick={() => setShowAdd((v) => !v)}
+          className="flex items-center gap-2"
+          style={{ paddingLeft: '1.25rem', paddingRight: '1.25rem', paddingTop: '0.75rem', paddingBottom: '0.75rem' }}
+        >
           <Plus className="size-4" />
           Add new target
         </Btn>
