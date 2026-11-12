@@ -57,9 +57,12 @@ export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
   );
 }
 
+const textareaClass =
+  'w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring';
+
 export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
-    <textarea {...props} className={`${fieldClass} ${props.className ?? ''}`} />
+    <textarea {...props} className={`${textareaClass} ${props.className ?? ''}`} />
   );
 }
 

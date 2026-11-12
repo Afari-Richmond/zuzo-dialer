@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import {
   BarChart3,
+  LayoutDashboard,
   LogOut,
   Megaphone,
   Palette,
@@ -18,6 +19,7 @@ import {
   DoNotCallPage,
   UploadPage,
 } from './pages';
+import { DashboardPage } from './dashboard-page';
 import { AnalyticsPage } from './analytics-page';
 import { TeamPage, TelephonySettingsPage } from './extra-pages';
 import { AcceptInvitePage, ForgotPasswordPage, ResetPasswordPage } from './auth-pages';
@@ -50,6 +52,7 @@ function applyBrandColor(hex: string | null) {
 }
 
 const NAV = [
+  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'upload', label: 'Upload contacts', icon: UploadCloud },
   { id: 'campaigns', label: 'Campaigns', icon: Megaphone },
   { id: 'attempts', label: 'Call attempts', icon: Radio },
@@ -64,10 +67,10 @@ type PageId = (typeof NAV)[number]['id'];
 type Route = { page: PageId } | { page: 'campaign-report'; campaignId: string };
 
 function routeFromPath(): Route {
-  const raw = window.location.pathname.replace(/^\/outreach\/?/, '') || 'upload';
+  const raw = window.location.pathname.replace(/^\/outreach\/?/, '') || 'dashboard';
   const reportMatch = raw.match(/^campaigns\/([^/]+)\/report$/);
   if (reportMatch) return { page: 'campaign-report', campaignId: reportMatch[1] };
-  return { page: (NAV.find((n) => n.id === raw)?.id ?? 'upload') as PageId };
+  return { page: (NAV.find((n) => n.id === raw)?.id ?? 'dashboard') as PageId };
 }
 
 export function App() {
@@ -127,7 +130,7 @@ export function App() {
       <Login
         onOk={() => {
           setAuthed(true);
-          go('upload');
+          go('dashboard');
         }}
       />
     );
@@ -208,6 +211,8 @@ export function App() {
           <main className="min-w-0 flex-1 px-4 py-6 lg:px-8 lg:py-8">
             {route.page === 'campaign-report' ? (
               <CampaignReportPage campaignId={route.campaignId} />
+            ) : route.page === 'dashboard' ? (
+              <DashboardPage onNavigate={go} />
             ) : route.page === 'attempts' ? (
               <AttemptsPage />
             ) : route.page === 'campaigns' ? (
