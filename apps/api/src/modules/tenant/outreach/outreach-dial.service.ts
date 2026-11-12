@@ -1,12 +1,16 @@
 import { randomUUID } from 'crypto';
 import { Inject, Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { DRIZZLE } from '../../../db/database.module';
 import type { Database } from '../../../db/client';
 import { voiceCalls, voiceCampaignReports, voiceDnc, voiceOutboundAttempts } from '../../../db/schema';
 import { badRequest, notFound } from '../../../common/errors';
 import { VoiceAdapterFactoryService } from '../../voice/voice-adapter-factory.service';
+import { voiceWebhookUrl } from '../../voice/webhook-url';
 import { normalizeGhanaPhone } from './phone';
+
+const PUBLIC_API_URL_FALLBACK = 'http://localhost:3100';
 
 const GHANA_TZ = 'Africa/Accra';
 const CALLING_WINDOW_START = '08:00';
@@ -27,7 +31,13 @@ export class OutreachDialService {
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly adapterFactory: VoiceAdapterFactoryService,
+    private readonly config: ConfigService,
   ) {}
+
+  private webhookUrlFor(tenantId: string): string {
+    const base = this.config.get<string>('PUBLIC_API_URL') || PUBLIC_API_URL_FALLBACK;
+    return voiceWebhookUrl(base, tenantId);
+  }
 
   private async getAiContext(tenantId: string, liveHubCampaignId: string): Promise<string | undefined> {
     const [row] = await this.db
@@ -168,7 +178,7 @@ export class OutreachDialService {
 
     const adapter = await this.adapterFactory.getAdapterForTenant(tenantId);
     const callId = `vc_${randomUUID()}`;
-    const webhookUrl = 'https://zuzo-dialer.invalid/webhooks/voice';
+    const webhookUrl = this.webhookUrlFor(tenantId);
     const reason = attempt.reason || undefined;
     const aiContext = attempt.liveHubCampaignId
       ? await this.getAiContext(tenantId, attempt.liveHubCampaignId)
@@ -235,7 +245,7 @@ export class OutreachDialService {
     }
 
     const callId = `vc_${randomUUID()}`;
-    const webhookUrl = 'https://zuzo-dialer.invalid/webhooks/voice';
+    const webhookUrl = this.webhookUrlFor(tenantId);
 
     let dialed: { callId: string; conversationId: string };
     try {

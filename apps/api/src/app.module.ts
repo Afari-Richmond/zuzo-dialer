@@ -8,6 +8,7 @@ import { TenantsModule } from './modules/platform/tenants/tenants.module';
 import { PlatformAdminsModule } from './modules/platform/platform-admins/platform-admins.module';
 import { PlatformStatsModule } from './modules/platform/platform-stats/platform-stats.module';
 import { VoiceModule } from './modules/voice/voice.module';
+import { VoiceWebhooksModule } from './modules/voice/webhooks/voice-webhooks.module';
 import { TelephonyCredentialsModule } from './modules/tenant/telephony-credentials/telephony-credentials.module';
 import { OutreachModule } from './modules/tenant/outreach/outreach.module';
 import { TeamModule } from './modules/tenant/team/team.module';
@@ -25,6 +26,7 @@ import { AiAgentModule } from './modules/tenant/ai-agent/ai-agent.module';
     PlatformAdminsModule,
     PlatformStatsModule,
     VoiceModule,
+    VoiceWebhooksModule,
     TelephonyCredentialsModule,
     OutreachModule,
     TeamModule,

@@ -46,10 +46,15 @@ export interface TransferCallInput {
  */
 export interface VoiceProviderAdapter {
   readonly name: string;
+  /** `requestUrl` must be the exact URL the provider was told to call (the
+   * same string passed as `webhookUrl` to startOutboundCall) — Twilio's real
+   * signature is computed over that URL, not whatever Express reports, which
+   * can differ behind a proxy or be spoofed via the Host header. */
   verifyWebhook(
     rawBody: string | Buffer,
     signature: string | undefined,
     headers: Record<string, string | string[] | undefined>,
+    requestUrl: string,
   ): boolean;
   parseInbound(payload: Record<string, unknown>): InboundCallEvent;
   parseCallStatus(payload: Record<string, unknown>): CallStatusEvent;

@@ -13,11 +13,24 @@ export class TwilioAdapter implements VoiceProviderAdapter {
 
   constructor(private readonly creds: TwilioCredentials) {}
 
-  verifyWebhook(rawBody: string | Buffer, signature: string | undefined): boolean {
+  /** Twilio's real X-Twilio-Signature algorithm (not a plain HMAC of the
+   * body): HMAC-SHA1, keyed by the auth token, over the webhook URL followed
+   * by each POST param's key+value, sorted by key with no separators, then
+   * base64-encoded. See https://www.twilio.com/docs/usage/webhooks/webhook-security */
+  verifyWebhook(
+    rawBody: string | Buffer,
+    signature: string | undefined,
+    _headers: Record<string, string | string[] | undefined>,
+    requestUrl: string,
+  ): boolean {
     const secret = this.creds.webhookSecret?.trim() || this.creds.authToken?.trim();
     if (!secret) return !signature;
     if (!signature) return false;
-    const hash = createHmac('sha1', secret).update(rawBody).digest('base64');
+    const params = new URLSearchParams(rawBody.toString());
+    const sortedKeys = [...new Set(params.keys())].sort();
+    let data = requestUrl;
+    for (const key of sortedKeys) data += key + (params.get(key) ?? '');
+    const hash = createHmac('sha1', secret).update(data).digest('base64');
     const a = Buffer.from(hash);
     const b = Buffer.from(signature);
     return a.length === b.length && timingSafeEqual(a, b);

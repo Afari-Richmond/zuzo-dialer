@@ -25,7 +25,10 @@ function serveSpa(app: NestExpressApplication, root: string, prefix: string, log
 
 async function bootstrap() {
   const logger = new Logger('Bootstrap');
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // rawBody: true preserves the exact request bytes on req.rawBody alongside
+  // Nest's normal parsed req.body — needed to verify Twilio/Africa's Talking
+  // webhook signatures, which are computed over the raw payload.
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
 
   app.setGlobalPrefix('api/v1', { exclude: ['health'] });
   app.enableCors();

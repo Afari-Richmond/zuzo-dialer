@@ -14,6 +14,9 @@ export class AfricaTalkingAdapter implements VoiceProviderAdapter {
   constructor(private readonly creds: AfricaTalkingCredentials) {}
 
   verifyWebhook(rawBody: string | Buffer, signature: string | undefined): boolean {
+    // Africa's Talking does not sign webhooks natively; this is a
+    // shared-secret convention we define ourselves, verified against a
+    // custom header the webhook endpoint is configured to send.
     const secret = this.creds.webhookSecret?.trim();
     if (!secret) return !signature;
     if (!signature) return false;
