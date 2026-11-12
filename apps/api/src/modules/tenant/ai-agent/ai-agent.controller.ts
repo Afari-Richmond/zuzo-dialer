@@ -84,6 +84,11 @@ export class AiAgentController {
     return this.aiAgent.listDocuments(actor.tenantId);
   }
 
+  @Get('tools')
+  listTools(@CurrentTenantActor() actor: TenantActor) {
+    return this.aiAgent.listTools(actor.tenantId);
+  }
+
   @Post('documents')
   @UseGuards(TenantRolesGuard)
   @TenantRoles('tenant_admin')

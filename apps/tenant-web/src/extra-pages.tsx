@@ -218,6 +218,7 @@ function AiAgentSection() {
           <AiAgentModelPicker key={`model-${config.agentId}`} />
           <AiAgentPromptEditor key={`prompt-${config.agentId}`} />
           <AiAgentDocumentsSection key={`docs-${config.agentId}`} />
+          <AiAgentToolsSection key={`tools-${config.agentId}`} />
         </>
       )}
     </div>
@@ -386,6 +387,46 @@ function AiAgentDocumentsSection() {
                 >
                   <Trash2 className="size-3.5" />
                 </button>
+              </td>
+            </tr>
+          ))}
+        </Table>
+      )}
+    </div>
+  );
+}
+
+const TOOL_TYPE_LABELS: Record<string, string> = {
+  rest: 'REST webhook',
+  mcp: 'MCP',
+  flow: 'Flow',
+};
+
+function AiAgentToolsSection() {
+  const { data, error, loading } = useLoad(() => aiAgentApi.listTools(), 'ai-agent-tools');
+  const tools = data?.tools ?? [];
+
+  return (
+    <div className="border-t border-border pt-4">
+      <h3 className="mb-1 text-sm font-semibold text-foreground">Tools</h3>
+      <p className="mb-3 text-sm text-muted-foreground">
+        Actions your AI agent can call during a conversation — read-only here, configured in your
+        voice AI platform.
+      </p>
+      {loading && !data && <p className="text-sm text-muted-foreground">Loading…</p>}
+      <ErrorBanner error={error} />
+      {tools.length === 0 && !loading && (
+        <p className="py-4 text-center text-sm text-muted-foreground">No tools configured.</p>
+      )}
+      {tools.length > 0 && (
+        <Table headers={['Name', 'Type', 'Method', 'Description']}>
+          {tools.map((t) => (
+            <tr key={t.id} className="border-t border-border">
+              <td className="px-5 py-3.5 font-medium text-foreground">{t.name}</td>
+              <td className="px-5 py-3.5 text-muted-foreground">{TOOL_TYPE_LABELS[t.type] ?? t.type}</td>
+              <td className="px-5 py-3.5 text-muted-foreground">{t.method ?? '—'}</td>
+              <td className="max-w-xs truncate px-5 py-3.5 text-muted-foreground" title={t.description ?? undefined}>
+                {t.description ?? '—'}
               </td>
             </tr>
           ))}

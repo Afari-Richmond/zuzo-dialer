@@ -189,6 +189,16 @@ export class OutreachController {
     return this.outreach.getCampaignReport(actor.tenantId, id);
   }
 
+  @Get('calls/:conversationId/transcript')
+  getConversationTranscript(@CurrentTenantActor() actor: TenantActor, @Param('conversationId') conversationId: string) {
+    return this.outreach.getConversationTranscript(actor.tenantId, conversationId);
+  }
+
+  @Get('calls/:conversationId/analysis')
+  getFullCallAnalysis(@CurrentTenantActor() actor: TenantActor, @Param('conversationId') conversationId: string) {
+    return this.outreach.getFullCallAnalysis(actor.tenantId, conversationId);
+  }
+
   @Get('campaigns/:id/report/export')
   async exportCampaignReport(@CurrentTenantActor() actor: TenantActor, @Param('id') id: string, @Res() res: Response) {
     const { filename, buffer } = await this.outreach.exportCampaignReport(actor.tenantId, id);

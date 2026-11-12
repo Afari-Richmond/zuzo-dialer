@@ -358,6 +358,7 @@ export class OutreachService {
         call: call
           ? {
               callId: call.callId,
+              conversationId: call.botConversationId,
               setupTime: call.setupTime,
               durationSeconds: call.durationSeconds,
               successful: call.successful,
@@ -384,6 +385,19 @@ export class OutreachService {
       needsFollowUp,
       recommendation: reportRows[0]?.recommendation ?? null,
     };
+  }
+
+  async getConversationTranscript(tenantId: string, conversationId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const conversation = await liveHub.getConversation(conversationId);
+    if (!conversation) throw badRequest('CONVERSATION_NOT_FOUND', 'No transcript found for that call');
+    return conversation;
+  }
+
+  async getFullCallAnalysis(tenantId: string, conversationId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const results = await liveHub.getFullPostCallAnalysis(conversationId);
+    return { results };
   }
 
   async exportCampaignReport(tenantId: string, campaignId: string): Promise<{ filename: string; buffer: Buffer }> {

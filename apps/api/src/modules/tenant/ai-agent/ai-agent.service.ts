@@ -128,6 +128,12 @@ export class AiAgentService {
     return document;
   }
 
+  async listTools(tenantId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const tools = await this.run(() => liveHub.listTools());
+    return { tools };
+  }
+
   async deleteDocument(tenantId: string, documentId: string) {
     const agentId = await this.requireAgentId(tenantId);
     const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);

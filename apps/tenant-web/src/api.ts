@@ -149,6 +149,7 @@ export type CampaignReportRow = {
   updatedAt: string | null;
   call: {
     callId: string;
+    conversationId: string | null;
     setupTime: string;
     durationSeconds: number;
     successful: boolean;
@@ -170,6 +171,34 @@ export type CampaignReport = {
   reviewedCount: number;
   needsFollowUp: number;
   recommendation: string | null;
+};
+
+export type ConversationTranscriptEntry = {
+  time: string | null;
+  taskName: string | null;
+  fromName: string;
+  toName: string | null;
+  message: string;
+  label: string;
+  type: string | null;
+};
+
+export type ConversationTranscript = {
+  id: string;
+  startTime: string | null;
+  endTime: string | null;
+  durationSeconds: number;
+  caller: string | null;
+  callee: string | null;
+  terminationReason: string | null;
+  history: ConversationTranscriptEntry[];
+};
+
+export type PostCallAnalysisDetail = {
+  name: string;
+  type: string | null;
+  time: string | null;
+  data: Record<string, unknown>;
 };
 
 export type CreateCampaignInput = {
@@ -357,6 +386,10 @@ export const api = {
       { method: 'POST' },
     ),
   campaignReport: (id: string) => request<CampaignReport>('outreach', `/campaigns/${id}/report`),
+  conversationTranscript: (conversationId: string) =>
+    request<ConversationTranscript>('outreach', `/calls/${conversationId}/transcript`),
+  fullCallAnalysis: (conversationId: string) =>
+    request<{ results: PostCallAnalysisDetail[] }>('outreach', `/calls/${conversationId}/analysis`),
   upsertOutcome: (
     campaignId: string,
     targetId: string,
@@ -451,6 +484,14 @@ export type KnowledgeDocument = {
   nTokens: number;
   createdAt: string | null;
 };
+export type AgentTool = {
+  id: string;
+  name: string;
+  description: string | null;
+  type: string;
+  method: string | null;
+  url: string | null;
+};
 
 export const aiAgentApi = {
   getConfig: () => request<{ agentId: string | null }>('tenant/ai-agent', '/config'),
@@ -483,6 +524,7 @@ export const aiAgentApi = {
   },
   deleteDocument: (id: string) =>
     request<{ ok: boolean }>('tenant/ai-agent', `/documents/${id}`, { method: 'DELETE' }),
+  listTools: () => request<{ tools: AgentTool[] }>('tenant/ai-agent', '/tools'),
 };
 
 export type TeamMember = {

@@ -167,6 +167,43 @@ export interface PostCallAnalysisResult {
   summary: string | null;
 }
 
+export interface PostCallAnalysisDetail {
+  name: string;
+  type: string | null;
+  time: string | null;
+  data: Record<string, unknown>;
+}
+
+export interface ConversationTranscriptEntry {
+  time: string | null;
+  taskName: string | null;
+  fromName: string;
+  toName: string | null;
+  message: string;
+  label: string;
+  type: string | null;
+}
+
+export interface ConversationDetail {
+  id: string;
+  startTime: string | null;
+  endTime: string | null;
+  durationSeconds: number;
+  caller: string | null;
+  callee: string | null;
+  terminationReason: string | null;
+  history: ConversationTranscriptEntry[];
+}
+
+export interface ToolSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  type: string;
+  method: string | null;
+  url: string | null;
+}
+
 export interface CampaignOverview {
   campaignId: string;
   campaignName: string;
@@ -800,6 +837,96 @@ export class LiveHubAdapter implements VoiceProviderAdapter {
       nextStep: (data.next_step as string) ?? (data.nextStep as string) ?? null,
       summary: (data.summary as string) ?? null,
     };
+  }
+
+  /** Every post-call analysis result for a conversation (sentiment, extracted
+   * structured variables, summaries — whatever the tenant's analyses are
+   * configured to produce), not just the single outcome/next_step/summary
+   * pick getPostCallAnalysis() makes for the campaign report table. */
+  async getFullPostCallAnalysis(conversationId: string): Promise<PostCallAnalysisDetail[]> {
+    const accountId = await this.getAccountId();
+    const res = await this.request(
+      `/ai-framework-management/api/v1/accounts/${accountId}/post_call_analysis_data/${conversationId}`,
+    );
+    if (res.status === 404) return [];
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub post-call-analysis fetch failed (${res.status}): ${bodyText}`);
+    }
+    const parsed = JSON.parse(bodyText) as {
+      results?: { name: string; type?: string | null; time?: string | null; data?: Record<string, unknown> }[];
+    };
+    return (parsed.results ?? []).map((r) => ({
+      name: r.name,
+      type: r.type ?? null,
+      time: r.time ?? null,
+      data: r.data ?? {},
+    }));
+  }
+
+  /** Full call transcript — the log of who said what, in order. */
+  async getConversation(conversationId: string): Promise<ConversationDetail | null> {
+    const res = await this.request(`${AI_AGENTS_PATH}/conversations/${conversationId}`);
+    if (res.status === 404) return null;
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub get conversation failed (${res.status}): ${bodyText}`);
+    }
+    const parsed = JSON.parse(bodyText) as {
+      id: string;
+      start_time: string | null;
+      end_time: string | null;
+      duration: number;
+      caller: string | null;
+      callee: string | null;
+      termination_reason: string | null;
+      history?: {
+        time: string | null;
+        task_name: string | null;
+        from_name: string;
+        to_name: string | null;
+        message: string;
+        label: string;
+        type: string | null;
+      }[];
+    };
+    return {
+      id: parsed.id,
+      startTime: parsed.start_time ?? null,
+      endTime: parsed.end_time ?? null,
+      durationSeconds: parsed.duration ?? 0,
+      caller: parsed.caller ?? null,
+      callee: parsed.callee ?? null,
+      terminationReason: parsed.termination_reason ?? null,
+      history: (parsed.history ?? []).map((h) => ({
+        time: h.time ?? null,
+        taskName: h.task_name ?? null,
+        fromName: h.from_name,
+        toName: h.to_name ?? null,
+        message: h.message,
+        label: h.label,
+        type: h.type ?? null,
+      })),
+    };
+  }
+
+  async listTools(): Promise<ToolSummary[]> {
+    const res = await this.request(`${AI_AGENTS_PATH}/tools?limit=200`);
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub list tools failed (${res.status}): ${bodyText}`);
+    }
+    const parsed = JSON.parse(bodyText) as {
+      tools?: { id: string; name: string; description?: string | null; type: string; method?: string | null; url?: string | null }[];
+    };
+    return (parsed.tools ?? []).map((t) => ({
+      id: t.id,
+      name: t.name,
+      description: t.description ?? null,
+      type: t.type,
+      method: t.method ?? null,
+      url: t.url ?? null,
+    }));
   }
 
   /**

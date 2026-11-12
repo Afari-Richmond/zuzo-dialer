@@ -10,6 +10,7 @@ import {
 } from 'react';
 import {
   ArrowLeft,
+  ChevronDown,
   Download,
   Eye,
   FileText,
@@ -751,8 +752,103 @@ function ReportCallRow({ row, onView }: { row: CampaignReportRow; onView: () => 
   );
 }
 
-/** Per-call detail: call metadata, LiveHub's AI summary (not a verbatim transcript — see
- * note below), and the editable outcome log entry for this contact. */
+/** Lazily loads and shows the full word-for-word call transcript plus the
+ * raw post-call analysis results (beyond the one outcome/summary pick
+ * already shown above), fetched live from the voice AI platform. */
+function CallTranscriptSection({ conversationId }: { conversationId: string }) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [transcript, setTranscript] = useState<Awaited<ReturnType<typeof api.conversationTranscript>> | null>(null);
+  const [analysis, setAnalysis] = useState<Awaited<ReturnType<typeof api.fullCallAnalysis>> | null>(null);
+  const [showRaw, setShowRaw] = useState(false);
+
+  function toggle() {
+    const next = !open;
+    setOpen(next);
+    if (next && !transcript && !loading) {
+      setLoading(true);
+      setError(null);
+      Promise.all([api.conversationTranscript(conversationId), api.fullCallAnalysis(conversationId)])
+        .then(([t, a]) => {
+          setTranscript(t);
+          setAnalysis(a);
+        })
+        .catch((err: Error) => setError(err.message))
+        .finally(() => setLoading(false));
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-border">
+      <button
+        type="button"
+        onClick={toggle}
+        className="flex w-full cursor-pointer items-center justify-between px-5 py-3.5 text-left text-sm font-semibold text-foreground"
+      >
+        Transcript &amp; analysis
+        <ChevronDown className={`size-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div className="border-t border-border p-5">
+          {loading && <p className="text-sm text-muted-foreground">Loading…</p>}
+          <ErrorBanner error={error} />
+          {transcript && (
+            <>
+              {transcript.history.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No transcript entries for this call.</p>
+              ) : (
+                <>
+                  <div className="flex flex-col gap-3">
+                    {transcript.history
+                      .filter((h) => h.message && h.fromName !== 'start' && (showRaw || h.type === 'message'))
+                      .map((h, i) => (
+                        <div key={i} className="text-sm">
+                          <span className="font-medium text-foreground">{h.fromName || 'System'}</span>
+                          {h.toName ? <span className="text-muted-foreground"> → {h.toName}</span> : null}
+                          <p className="whitespace-pre-wrap text-muted-foreground">{h.message}</p>
+                        </div>
+                      ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowRaw((v) => !v)}
+                    className="mt-3 cursor-pointer text-xs font-medium text-primary hover:underline"
+                  >
+                    {showRaw ? 'Hide tool activity' : 'Show full raw log (incl. tool calls)'}
+                  </button>
+                </>
+              )}
+              {analysis && analysis.results.length > 0 && (
+                <div className="mt-5 border-t border-border pt-4">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    Analysis results
+                  </p>
+                  <div className="flex flex-col gap-3">
+                    {analysis.results.map((r, i) => (
+                      <div key={i} className="rounded-lg bg-secondary px-3.5 py-3 text-sm">
+                        <div className="font-medium text-foreground">
+                          {r.name}
+                          {r.type && <span className="ml-1.5 text-xs text-muted-foreground">({r.type})</span>}
+                        </div>
+                        <pre className="mt-1 overflow-x-auto whitespace-pre-wrap text-xs text-muted-foreground">
+                          {JSON.stringify(r.data, null, 2)}
+                        </pre>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Per-call detail: call metadata, the AI's post-call summary, an expandable
+ * full transcript + analysis, and the editable outcome log entry. */
 function CallDetailPanel({
   row,
   campaignId,
@@ -858,10 +954,6 @@ function CallDetailPanel({
             {row.aiSuggestion.summary && (
               <p className="mt-1.5 text-sm text-muted-foreground">{row.aiSuggestion.summary}</p>
             )}
-            <p className="mt-2 text-[11px] text-muted-foreground/70">
-              A word-for-word call transcript isn't available — this is an AI-generated
-              summary of the conversation.
-            </p>
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">
@@ -869,6 +961,8 @@ function CallDetailPanel({
             or the call was too short to analyze.
           </p>
         )}
+
+        {row.call?.conversationId && <CallTranscriptSection conversationId={row.call.conversationId} />}
 
         <div className="grid gap-3">
           <Field label="Outcome">
