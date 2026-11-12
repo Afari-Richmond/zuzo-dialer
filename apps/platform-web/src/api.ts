@@ -57,8 +57,11 @@ export type TenantAdminSettings = {
 
 export const tenants = {
   list: (q?: string) => request<{ tenants: Tenant[] }>(`/platform/tenants${q ? `?q=${encodeURIComponent(q)}` : ''}`),
-  create: (dto: { name: string; slug: string }) =>
-    request<{ tenant: Tenant }>('/platform/tenants', { method: 'POST', body: JSON.stringify(dto) }),
+  create: (dto: { name: string; slug: string; adminEmail: string; adminDisplayName: string }) =>
+    request<{ tenant: Tenant; adminUser: { email: string } }>('/platform/tenants', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    }),
   suspend: (id: string) => request<{ tenant: Tenant }>(`/platform/tenants/${id}/suspend`, { method: 'POST' }),
   activate: (id: string) => request<{ tenant: Tenant }>(`/platform/tenants/${id}/activate`, { method: 'POST' }),
   remove: (id: string) => request<{ ok: true }>(`/platform/tenants/${id}`, { method: 'DELETE' }),

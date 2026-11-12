@@ -29,13 +29,27 @@ export function TenantsPage() {
   const { data: overview } = useLoad(() => statsApi.overview(), 'platform-stats', 15000);
   const [showCreate, setShowCreate] = useState(false);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [invitedEmail, setInvitedEmail] = useState<string | null>(null);
 
   return (
     <div>
       <div className="mb-6 flex items-center justify-between">
         <p className="text-sm text-muted-foreground">Manage every tenant on the platform.</p>
-        <Btn onClick={() => setShowCreate((v) => !v)}>{showCreate ? 'Cancel' : 'New tenant'}</Btn>
+        <Btn
+          onClick={() => {
+            setShowCreate((v) => !v);
+            setInvitedEmail(null);
+          }}
+        >
+          {showCreate ? 'Cancel' : 'New tenant'}
+        </Btn>
       </div>
+
+      {invitedEmail && (
+        <p className="mb-6 rounded-xl bg-green-50 px-4 py-3 text-sm text-green-700">
+          Tenant created — an invitation to set up their admin account was sent to {invitedEmail}.
+        </p>
+      )}
 
       {overview && (
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -48,8 +62,9 @@ export function TenantsPage() {
 
       {showCreate && (
         <CreateTenantForm
-          onCreated={() => {
+          onCreated={(adminEmail) => {
             setShowCreate(false);
+            setInvitedEmail(adminEmail);
             reload();
           }}
         />
@@ -251,9 +266,11 @@ function TenantAdminPanel({ tenantId, onSaved }: { tenantId: string; onSaved: ()
   );
 }
 
-function CreateTenantForm({ onCreated }: { onCreated: () => void }) {
+function CreateTenantForm({ onCreated }: { onCreated: (adminEmail: string) => void }) {
   const [name, setName] = useState('');
   const [slug, setSlug] = useState('');
+  const [adminEmail, setAdminEmail] = useState('');
+  const [adminDisplayName, setAdminDisplayName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -262,8 +279,8 @@ function CreateTenantForm({ onCreated }: { onCreated: () => void }) {
     setSaving(true);
     setError(null);
     tenantsApi
-      .create({ name, slug })
-      .then(onCreated)
+      .create({ name, slug, adminEmail, adminDisplayName })
+      .then((res) => onCreated(res.adminUser.email))
       .catch((err: Error) => setError(err instanceof ApiError ? err.message : err.message))
       .finally(() => setSaving(false));
   }
@@ -271,11 +288,11 @@ function CreateTenantForm({ onCreated }: { onCreated: () => void }) {
   return (
     <form onSubmit={submit} className="card-surface mb-6 flex flex-wrap items-end gap-3 p-6">
       <div className="min-w-48 flex-1">
-        <Field label="Name">
+        <Field label="Tenant name">
           <Input required value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         </Field>
       </div>
-      <div className="min-w-48 flex-1">
+      <div className="min-w-40 flex-1">
         <Field label="Slug">
           <Input
             required
@@ -285,8 +302,24 @@ function CreateTenantForm({ onCreated }: { onCreated: () => void }) {
           />
         </Field>
       </div>
+      <div className="min-w-48 flex-1">
+        <Field label="First admin's name">
+          <Input required value={adminDisplayName} onChange={(e) => setAdminDisplayName(e.target.value)} />
+        </Field>
+      </div>
+      <div className="min-w-48 flex-1">
+        <Field label="First admin's email">
+          <Input
+            type="email"
+            required
+            value={adminEmail}
+            onChange={(e) => setAdminEmail(e.target.value)}
+            placeholder="owner@client.com"
+          />
+        </Field>
+      </div>
       <Btn type="submit" disabled={saving}>
-        {saving ? 'Creating…' : 'Create'}
+        {saving ? 'Creating…' : 'Create & invite admin'}
       </Btn>
       <ErrorBanner error={error} />
     </form>

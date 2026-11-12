@@ -25,7 +25,7 @@ export class TenantsController {
 
   @Post()
   create(@Body() dto: CreateTenantDto) {
-    return this.tenants.create(dto).then((tenant) => ({ tenant }));
+    return this.tenants.create(dto);
   }
 
   @Patch(':id')

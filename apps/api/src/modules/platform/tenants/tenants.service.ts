@@ -4,6 +4,7 @@ import { DRIZZLE } from '../../../db/database.module';
 import type { Database } from '../../../db/client';
 import { tenants } from '../../../db/schema';
 import { conflict, notFound } from '../../../common/errors';
+import { TeamService } from '../../tenant/team/team.service';
 import type {
   CreateTenantDto,
   ListTenantsQueryDto,
@@ -34,7 +35,10 @@ function readAdminSettings(settings: unknown): TenantAdminSettings {
 
 @Injectable()
 export class TenantsService {
-  constructor(@Inject(DRIZZLE) private readonly db: Database) {}
+  constructor(
+    @Inject(DRIZZLE) private readonly db: Database,
+    private readonly team: TeamService,
+  ) {}
 
   async list(query: ListTenantsQueryDto) {
     const conditions = [
@@ -65,7 +69,22 @@ export class TenantsService {
       .insert(tenants)
       .values({ name: dto.name, slug: dto.slug })
       .returning();
-    return tenant;
+
+    // A tenant with no admin is a dead end — nobody could ever log into it —
+    // so the first admin is invited as part of creation, not a separate
+    // manual step. If the invite fails (e.g. email already in use), the
+    // tenant row is rolled back rather than left orphaned with no way in.
+    try {
+      const { user } = await this.team.invite(tenant.id, {
+        email: dto.adminEmail,
+        displayName: dto.adminDisplayName,
+        role: 'tenant_admin',
+      });
+      return { tenant, adminUser: user };
+    } catch (err) {
+      await this.db.delete(tenants).where(eq(tenants.id, tenant.id));
+      throw err;
+    }
   }
 
   async update(id: string, dto: UpdateTenantDto) {

@@ -10,6 +10,13 @@ export class CreateTenantDto {
     message: 'slug must be lowercase letters/numbers/hyphens',
   })
   slug!: string;
+
+  @IsEmail()
+  adminEmail!: string;
+
+  @IsString()
+  @MinLength(2)
+  adminDisplayName!: string;
 }
 
 export class UpdateTenantDto {
