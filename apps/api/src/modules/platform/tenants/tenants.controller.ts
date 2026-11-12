@@ -1,7 +1,12 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { PlatformAuthGuard } from '../../auth/guards/platform-auth.guard';
 import { TenantsService } from './tenants.service';
-import { CreateTenantDto, ListTenantsQueryDto, UpdateTenantDto } from './dto/tenant.dto';
+import {
+  CreateTenantDto,
+  ListTenantsQueryDto,
+  UpdateTenantAdminSettingsDto,
+  UpdateTenantDto,
+} from './dto/tenant.dto';
 
 @Controller('platform/tenants')
 @UseGuards(PlatformAuthGuard)
@@ -26,6 +31,16 @@ export class TenantsController {
   @Patch(':id')
   update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateTenantDto) {
     return this.tenants.update(id, dto).then((tenant) => ({ tenant }));
+  }
+
+  @Get(':id/admin-settings')
+  getAdminSettings(@Param('id', ParseUUIDPipe) id: string) {
+    return this.tenants.getAdminSettings(id).then((adminSettings) => ({ adminSettings }));
+  }
+
+  @Put(':id/admin-settings')
+  updateAdminSettings(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateTenantAdminSettingsDto) {
+    return this.tenants.updateAdminSettings(id, dto).then((adminSettings) => ({ adminSettings }));
   }
 
   @Post(':id/suspend')

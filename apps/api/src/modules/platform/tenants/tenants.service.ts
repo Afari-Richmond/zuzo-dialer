@@ -4,7 +4,33 @@ import { DRIZZLE } from '../../../db/database.module';
 import type { Database } from '../../../db/client';
 import { tenants } from '../../../db/schema';
 import { conflict, notFound } from '../../../common/errors';
-import type { CreateTenantDto, ListTenantsQueryDto, UpdateTenantDto } from './dto/tenant.dto';
+import type {
+  CreateTenantDto,
+  ListTenantsQueryDto,
+  UpdateTenantAdminSettingsDto,
+  UpdateTenantDto,
+} from './dto/tenant.dto';
+
+export interface TenantAdminSettings {
+  plan: 'trial' | 'starter' | 'growth' | 'scale' | 'custom';
+  monthlyMinuteQuota: number | null;
+  ratePerMinuteCents: number | null;
+  billingContactName: string | null;
+  billingContactEmail: string | null;
+  notes: string | null;
+}
+
+function readAdminSettings(settings: unknown): TenantAdminSettings {
+  const admin = (settings as { admin?: Partial<TenantAdminSettings> } | null)?.admin ?? {};
+  return {
+    plan: admin.plan ?? 'trial',
+    monthlyMinuteQuota: admin.monthlyMinuteQuota ?? null,
+    ratePerMinuteCents: admin.ratePerMinuteCents ?? null,
+    billingContactName: admin.billingContactName ?? null,
+    billingContactEmail: admin.billingContactEmail ?? null,
+    notes: admin.notes ?? null,
+  };
+}
 
 @Injectable()
 export class TenantsService {
@@ -60,6 +86,32 @@ export class TenantsService {
       .where(eq(tenants.id, id))
       .returning();
     return tenant;
+  }
+
+  async getAdminSettings(id: string): Promise<TenantAdminSettings> {
+    const tenant = await this.get(id);
+    return readAdminSettings(tenant.settings);
+  }
+
+  async updateAdminSettings(id: string, dto: UpdateTenantAdminSettingsDto): Promise<TenantAdminSettings> {
+    const tenant = await this.get(id);
+    const current = readAdminSettings(tenant.settings);
+    const next: TenantAdminSettings = {
+      plan: dto.plan !== undefined ? dto.plan : current.plan,
+      monthlyMinuteQuota: dto.monthlyMinuteQuota !== undefined ? dto.monthlyMinuteQuota : current.monthlyMinuteQuota,
+      ratePerMinuteCents: dto.ratePerMinuteCents !== undefined ? dto.ratePerMinuteCents : current.ratePerMinuteCents,
+      billingContactName: dto.billingContactName !== undefined ? dto.billingContactName : current.billingContactName,
+      billingContactEmail: dto.billingContactEmail !== undefined ? dto.billingContactEmail : current.billingContactEmail,
+      notes: dto.notes !== undefined ? dto.notes : current.notes,
+    };
+
+    const existingSettings = (tenant.settings as Record<string, unknown>) ?? {};
+    await this.db
+      .update(tenants)
+      .set({ settings: { ...existingSettings, admin: next } })
+      .where(eq(tenants.id, id));
+
+    return next;
   }
 
   async remove(id: string) {

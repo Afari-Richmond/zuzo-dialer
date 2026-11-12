@@ -46,6 +46,15 @@ export type Tenant = {
   updatedAt: string;
 };
 
+export type TenantAdminSettings = {
+  plan: 'trial' | 'starter' | 'growth' | 'scale' | 'custom';
+  monthlyMinuteQuota: number | null;
+  ratePerMinuteCents: number | null;
+  billingContactName: string | null;
+  billingContactEmail: string | null;
+  notes: string | null;
+};
+
 export const tenants = {
   list: (q?: string) => request<{ tenants: Tenant[] }>(`/platform/tenants${q ? `?q=${encodeURIComponent(q)}` : ''}`),
   create: (dto: { name: string; slug: string }) =>
@@ -53,6 +62,15 @@ export const tenants = {
   suspend: (id: string) => request<{ tenant: Tenant }>(`/platform/tenants/${id}/suspend`, { method: 'POST' }),
   activate: (id: string) => request<{ tenant: Tenant }>(`/platform/tenants/${id}/activate`, { method: 'POST' }),
   remove: (id: string) => request<{ ok: true }>(`/platform/tenants/${id}`, { method: 'DELETE' }),
+  getAdminSettings: (id: string) =>
+    request<{ adminSettings: TenantAdminSettings }>(`/platform/tenants/${id}/admin-settings`).then(
+      (d) => d.adminSettings,
+    ),
+  updateAdminSettings: (id: string, dto: Partial<TenantAdminSettings>) =>
+    request<{ adminSettings: TenantAdminSettings }>(`/platform/tenants/${id}/admin-settings`, {
+      method: 'PUT',
+      body: JSON.stringify(dto),
+    }).then((d) => d.adminSettings),
 };
 
 export type PlatformAdmin = {
