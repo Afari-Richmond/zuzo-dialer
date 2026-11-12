@@ -1753,8 +1753,35 @@ function CampaignForm({
     setStep((s) => s + 1);
   }
 
+  /** The wizard's step dots let you jump anywhere, so a step's own
+   * "required" fields can't be trusted to have been checked — this is the
+   * one real gate, run right before the campaign is actually created.
+   * Returns the step to send the user back to, or null if everything's
+   * filled in. */
+  function firstInvalidStep(): number | null {
+    if (!campaignName.trim()) return 0;
+    if (!everyday && days.length === 0) return 1;
+    return null;
+  }
+
   function createAndContinue(e: FormEvent) {
     e.preventDefault();
+    if (createdCampaignId) {
+      // Already created from an earlier visit to this step — don't create a
+      // second campaign, just move on.
+      setStep((s) => s + 1);
+      return;
+    }
+    const invalidStep = firstInvalidStep();
+    if (invalidStep !== null) {
+      setError(
+        invalidStep === 0
+          ? 'Campaign name is required.'
+          : 'Pick at least one day, or select Everyday.',
+      );
+      setStep(invalidStep);
+      return;
+    }
     setSubmitting(true);
     setError(null);
     api
@@ -1784,28 +1811,50 @@ function CampaignForm({
 
   if (mode === 'create') {
     const stepLabels = ['Basics', 'Schedule', 'Call rate', 'Failure handling', 'AI context', 'Upload contacts'];
+    // Steps 4-5 save against the campaign itself, which doesn't exist until
+    // step 3's "Create campaign" actually runs — jumping there earlier
+    // would have nothing to save against.
+    const goToStep = (i: number) => {
+      if (i >= 4 && !createdCampaignId) return;
+      setError(null);
+      setStep(i);
+    };
     return (
       <div className="grid gap-5">
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
-          {stepLabels.map((label, i) => (
-            <span key={label} className="flex items-center gap-1.5">
-              <span
-                className={`flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-medium ${
-                  i === step
-                    ? 'bg-primary text-primary-foreground'
-                    : i < step
-                      ? 'bg-primary/15 text-primary'
-                      : 'bg-secondary text-muted-foreground'
-                }`}
-              >
-                {i < step ? '✓' : i + 1}
+          {stepLabels.map((label, i) => {
+            const reachable = i < 4 || !!createdCampaignId;
+            return (
+              <span key={label} className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => goToStep(i)}
+                  disabled={!reachable}
+                  title={reachable ? `Go to ${label}` : 'Create the campaign first (step 4) to unlock this step'}
+                  className={`flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-medium transition-colors ${
+                    i === step
+                      ? 'bg-primary text-primary-foreground'
+                      : i < step
+                        ? 'bg-primary/15 text-primary'
+                        : 'bg-secondary text-muted-foreground'
+                  } ${reachable ? 'cursor-pointer hover:ring-2 hover:ring-primary/30' : 'cursor-not-allowed opacity-50'}`}
+                >
+                  {i < step ? '✓' : i + 1}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => goToStep(i)}
+                  disabled={!reachable}
+                  className={`text-xs font-medium transition-colors ${
+                    i === step ? 'text-foreground' : 'text-muted-foreground'
+                  } ${reachable ? 'cursor-pointer hover:text-foreground' : 'cursor-not-allowed opacity-50'}`}
+                >
+                  {label}
+                </button>
+                {i < stepLabels.length - 1 && <span className="mx-1 h-px w-4 shrink-0 bg-border" />}
               </span>
-              <span className={`text-xs font-medium ${i === step ? 'text-foreground' : 'text-muted-foreground'}`}>
-                {label}
-              </span>
-              {i < stepLabels.length - 1 && <span className="mx-1 h-px w-4 shrink-0 bg-border" />}
-            </span>
-          ))}
+            );
+          })}
         </div>
 
         {step === 0 && (
@@ -2004,6 +2053,11 @@ function CampaignForm({
         {step === 3 && (
           <form onSubmit={createAndContinue} className="grid gap-4">
             <ErrorBanner error={error} />
+            {createdCampaignId && (
+              <p className="rounded-xl bg-green-50 px-3.5 py-2.5 text-sm text-green-700">
+                Campaign created — these settings are locked in. Continue to the next step.
+              </p>
+            )}
             <FormSection title="Call Failure and Fax/Answering Machine Settings">
               <div className="grid gap-4 sm:grid-cols-2">
                 <Field label="Maximum retries">
@@ -2013,6 +2067,7 @@ function CampaignForm({
                     max={10}
                     value={maxRetries}
                     onChange={(e) => setMaxRetries(Number(e.target.value))}
+                    disabled={!!createdCampaignId}
                     required
                   />
                   <Hint>Range: 1-10</Hint>
@@ -2024,6 +2079,7 @@ function CampaignForm({
                     max={400}
                     value={minDurationBetweenRetries}
                     onChange={(e) => setMinDurationBetweenRetries(Number(e.target.value))}
+                    disabled={!!createdCampaignId}
                     required
                   />
                   <Hint>Range: 0-400 min</Hint>
@@ -2034,6 +2090,7 @@ function CampaignForm({
                   <Select
                     value={machineDetection}
                     onChange={(e) => setMachineDetection(e.target.value as MachineDetection)}
+                    disabled={!!createdCampaignId}
                   >
                     {MACHINE_DETECTION_OPTIONS.map((o) => (
                       <option key={o.value} value={o.value}>
@@ -2049,6 +2106,7 @@ function CampaignForm({
                     max={300}
                     value={minWaitDurationForAnswer}
                     onChange={(e) => setMinWaitDurationForAnswer(Number(e.target.value))}
+                    disabled={!!createdCampaignId}
                     required
                   />
                   <Hint>Range: 1-300 sec</Hint>
@@ -2056,11 +2114,16 @@ function CampaignForm({
               </div>
             </FormSection>
             <div className="flex justify-between">
-              <Btn type="button" kind="ghost" onClick={() => setStep((s) => s - 1)} disabled={submitting}>
+              <Btn
+                type="button"
+                kind="ghost"
+                onClick={() => setStep((s) => s - 1)}
+                disabled={submitting || !!createdCampaignId}
+              >
                 Back
               </Btn>
               <Btn type="submit" disabled={submitting}>
-                {submitting ? 'Creating…' : 'Create campaign'}
+                {submitting ? 'Creating…' : createdCampaignId ? 'Continue' : 'Create campaign'}
               </Btn>
             </div>
           </form>
