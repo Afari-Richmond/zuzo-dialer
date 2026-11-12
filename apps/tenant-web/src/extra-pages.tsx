@@ -36,7 +36,68 @@ const PROVIDER_FIELDS: Record<string, { key: string; label: string }[]> = {
   ],
 };
 
+type SettingsTab = 'telephony' | 'agent' | 'prompt' | 'knowledge' | 'tools';
+
+const SETTINGS_TABS: { id: SettingsTab; label: string }[] = [
+  { id: 'telephony', label: 'Telephony' },
+  { id: 'agent', label: 'AI Agent' },
+  { id: 'prompt', label: 'Prompt' },
+  { id: 'knowledge', label: 'Knowledge base' },
+  { id: 'tools', label: 'Tools' },
+];
+
 export function TelephonySettingsPage() {
+  const [tab, setTab] = useState<SettingsTab>('telephony');
+  const { data: config, reload: reloadConfig } = useLoad(() => aiAgentApi.getConfig(), 'ai-agent-config');
+  const agentId = config?.agentId ?? null;
+
+  return (
+    <div className="max-w-5xl">
+      <div className="mb-6 flex gap-1 border-b border-border">
+        {SETTINGS_TABS.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            onClick={() => setTab(t.id)}
+            className={`-mb-px cursor-pointer border-b-2 px-4 py-3 text-sm font-medium transition-colors ${
+              tab === t.id
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'telephony' && <TelephonyCredentialsPanel />}
+      {tab === 'agent' && <AiAgentPickerPanel agentId={agentId} onAgentChanged={reloadConfig} />}
+      {tab === 'prompt' &&
+        (agentId ? <AiAgentPromptEditor key={agentId} /> : <NoAgentSelected onGoToAgent={() => setTab('agent')} />)}
+      {tab === 'knowledge' &&
+        (agentId ? (
+          <AiAgentDocumentsSection key={agentId} />
+        ) : (
+          <NoAgentSelected onGoToAgent={() => setTab('agent')} />
+        ))}
+      {tab === 'tools' &&
+        (agentId ? <AiAgentToolsSection key={agentId} /> : <NoAgentSelected onGoToAgent={() => setTab('agent')} />)}
+    </div>
+  );
+}
+
+function NoAgentSelected({ onGoToAgent }: { onGoToAgent: () => void }) {
+  return (
+    <div className="card-surface p-10 text-center">
+      <p className="text-sm text-muted-foreground">Select an AI Agent first — this tab needs one to work with.</p>
+      <Btn kind="ghost" className="mt-3" onClick={onGoToAgent}>
+        Go to AI Agent tab
+      </Btn>
+    </div>
+  );
+}
+
+function TelephonyCredentialsPanel() {
   const { data, error, loading, reload } = useLoad(
     () => credentialsApi.list().then((d) => d.credentials),
     'telephony-credentials',
@@ -63,12 +124,12 @@ export function TelephonySettingsPage() {
   }
 
   return (
-    <div className="max-w-2xl">
-      <p className="mb-6 text-sm text-muted-foreground">
+    <div className="grid gap-6">
+      <p className="text-sm text-muted-foreground">
         Your calls dial out through your own voice-provider account. Saving a new credential
         activates it and deactivates whatever was active before.
       </p>
-      <form onSubmit={save} className="card-surface mb-6 grid gap-4 p-6">
+      <form onSubmit={save} className="card-surface grid gap-4 p-6">
         <div className="flex flex-wrap gap-3">
           <div className="w-48">
             <Field label="Provider">
@@ -145,39 +206,31 @@ export function TelephonySettingsPage() {
           ))}
         </Table>
       )}
-
-      <h2 className="mb-1.5 mt-8 text-sm font-semibold text-foreground">AI Agent</h2>
-      <p className="mb-4 text-sm text-muted-foreground">
-        Everything below is read live from your voice AI platform and saved straight back to
-        it — there's no separate local setting.
-      </p>
-      <AiAgentSection />
     </div>
   );
 }
 
 /**
  * A thin proxy onto the voice AI platform's agent framework, not a local
- * setting: the agent list, the current model, and the list of available
- * models are all fetched live every time this mounts, and saving writes
- * straight back to the same account via AiAgentService on the API side.
+ * setting: the agent list is fetched live every time this mounts, and
+ * saving writes straight back to the same account via AiAgentService on
+ * the API side.
  */
-function AiAgentSection() {
-  const { data: config, error: configError, loading: configLoading, reload: reloadConfig } = useLoad(
-    () => aiAgentApi.getConfig(),
-    'ai-agent-config',
-  );
-  const { data: agentsData, error: agentsError } = useLoad(
-    () => aiAgentApi.listAgents(),
-    'ai-agent-agents',
-  );
+function AiAgentPickerPanel({
+  agentId: savedAgentId,
+  onAgentChanged,
+}: {
+  agentId: string | null;
+  onAgentChanged: () => void;
+}) {
+  const { data: agentsData, error: agentsError } = useLoad(() => aiAgentApi.listAgents(), 'ai-agent-agents');
   const [agentId, setAgentId] = useState('');
   const [agentSaving, setAgentSaving] = useState(false);
   const [agentSaveError, setAgentSaveError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (config) setAgentId(config.agentId ?? '');
-  }, [config]);
+    setAgentId(savedAgentId ?? '');
+  }, [savedAgentId]);
 
   function saveAgent() {
     if (!agentId) return;
@@ -185,42 +238,34 @@ function AiAgentSection() {
     setAgentSaveError(null);
     aiAgentApi
       .setAgent(agentId)
-      .then(() => reloadConfig())
+      .then(() => onAgentChanged())
       .catch((err: Error) => setAgentSaveError(err instanceof ApiError ? err.message : err.message))
       .finally(() => setAgentSaving(false));
   }
 
   return (
-    <div className="card-surface grid gap-4 p-6">
-      {configLoading && !config && <p className="text-sm text-muted-foreground">Loading…</p>}
-      <ErrorBanner error={configError} />
-      <ErrorBanner error={agentsError} />
-
-      <Field label="Agent">
-        <Select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
-          <option value="">— select the AI Agent behind this tenant's bot —</option>
-          {(agentsData?.agents ?? []).map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </Select>
-      </Field>
-      <div>
-        <Btn type="button" onClick={saveAgent} disabled={agentSaving || !agentId}>
-          {agentSaving ? 'Saving…' : 'Save agent'}
-        </Btn>
-        <ErrorBanner error={agentSaveError} />
+    <div className="grid gap-6">
+      <div className="card-surface grid gap-4 p-6">
+        <ErrorBanner error={agentsError} />
+        <Field label="Agent">
+          <Select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
+            <option value="">— select the AI Agent behind this tenant's bot —</option>
+            {(agentsData?.agents ?? []).map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.name}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <div>
+          <Btn type="button" onClick={saveAgent} disabled={agentSaving || !agentId}>
+            {agentSaving ? 'Saving…' : 'Save agent'}
+          </Btn>
+          <ErrorBanner error={agentSaveError} />
+        </div>
       </div>
 
-      {config?.agentId && (
-        <>
-          <AiAgentModelPicker key={`model-${config.agentId}`} />
-          <AiAgentPromptEditor key={`prompt-${config.agentId}`} />
-          <AiAgentDocumentsSection key={`docs-${config.agentId}`} />
-          <AiAgentToolsSection key={`tools-${config.agentId}`} />
-        </>
-      )}
+      {savedAgentId && <AiAgentModelPicker key={savedAgentId} />}
     </div>
   );
 }
@@ -251,7 +296,7 @@ function AiAgentPromptEditor() {
   }
 
   return (
-    <div className="border-t border-border pt-4">
+    <div className="card-surface p-6">
       {loading && !data && <p className="text-sm text-muted-foreground">Loading…</p>}
       <ErrorBanner error={error} />
       {data && (
@@ -322,7 +367,7 @@ function AiAgentDocumentsSection() {
   const documents = data?.documents ?? [];
 
   return (
-    <div className="border-t border-border pt-4">
+    <div className="card-surface p-6">
       <h3 className="mb-1 text-sm font-semibold text-foreground">Knowledge base</h3>
       <p className="mb-3 text-sm text-muted-foreground">
         Documents your AI agent can search while on a call — policy documents, FAQs, pricing sheets.
@@ -407,7 +452,7 @@ function AiAgentToolsSection() {
   const tools = data?.tools ?? [];
 
   return (
-    <div className="border-t border-border pt-4">
+    <div className="card-surface p-6">
       <h3 className="mb-1 text-sm font-semibold text-foreground">Tools</h3>
       <p className="mb-3 text-sm text-muted-foreground">
         Actions your AI agent can call during a conversation — read-only here, configured in your
@@ -470,7 +515,7 @@ function AiAgentModelPicker() {
   }
 
   return (
-    <div className="border-t border-border pt-4">
+    <div className="card-surface p-6">
       {currentLoading && !current && <p className="text-sm text-muted-foreground">Loading…</p>}
       <ErrorBanner error={currentError} />
       <ErrorBanner error={modelsError} />
