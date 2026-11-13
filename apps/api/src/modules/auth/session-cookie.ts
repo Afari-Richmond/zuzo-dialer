@@ -10,26 +10,33 @@ export function isSecureRequest(req: Request): boolean {
   return typeof forwardedProto === 'string' && forwardedProto.split(',')[0].trim() === 'https';
 }
 
+/** SameSite=None is required once the frontend and API live on different
+ * origins (e.g. Vercel + Render) — browsers refuse to send a Lax cookie on
+ * a cross-site fetch. None requires Secure (HTTPS), so it's only safe to
+ * use when the request actually arrived over HTTPS; local http dev falls
+ * back to Lax, which is fine there since both sides are same-origin. */
 export function setSessionCookie(
   res: Response,
   req: Request,
   name: string,
   token: string,
 ): void {
+  const secure = isSecureRequest(req);
   const parts = [
     `${name}=${token}`,
     'Path=/',
     'HttpOnly',
-    'SameSite=Lax',
+    `SameSite=${secure ? 'None' : 'Lax'}`,
     `Max-Age=${SESSION_TTL_SECONDS}`,
   ];
-  if (isSecureRequest(req)) parts.push('Secure');
+  if (secure) parts.push('Secure');
   res.append('Set-Cookie', parts.join('; '));
 }
 
 export function clearSessionCookie(res: Response, req: Request, name: string): void {
-  const parts = [`${name}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
-  if (isSecureRequest(req)) parts.push('Secure');
+  const secure = isSecureRequest(req);
+  const parts = [`${name}=`, 'Path=/', 'HttpOnly', `SameSite=${secure ? 'None' : 'Lax'}`, 'Max-Age=0'];
+  if (secure) parts.push('Secure');
   res.append('Set-Cookie', parts.join('; '));
 }
 

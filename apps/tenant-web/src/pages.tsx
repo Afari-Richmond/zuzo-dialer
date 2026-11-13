@@ -12,8 +12,8 @@ import {
   ChevronDown,
   Download,
   Eye,
-  FileText,
   Pencil,
+  PhoneCall,
   Plus,
   Search,
   SlidersHorizontal,
@@ -21,9 +21,11 @@ import {
   Upload,
   X,
 } from 'lucide-react';
-import { navigate } from './nav';
+import { appPath, navigate } from './nav';
 import {
+  aiAgentApi,
   api,
+  API_BASE_URL,
   type Campaign,
   type CampaignNextStep,
   type CampaignOutcome,
@@ -37,6 +39,7 @@ import {
   ErrorBanner,
   Field,
   Input,
+  MultiSelectDropdown,
   Select,
   StatCard,
   StatusBadge,
@@ -45,6 +48,7 @@ import {
   Toggle,
   useLoad,
 } from './ui';
+import { PromptTemplatePicker } from './prompt-template-picker';
 
 type TypedContact = { phone: string; reason: string };
 
@@ -438,6 +442,7 @@ function TargetsList({ campaignId }: { campaignId: string }) {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
   const [newNumber, setNewNumber] = useState('');
+  const [newName, setNewName] = useState('');
   const [newReason, setNewReason] = useState('');
   const [addError, setAddError] = useState<string | null>(null);
   const [adding, setAdding] = useState(false);
@@ -459,9 +464,14 @@ function TargetsList({ campaignId }: { campaignId: string }) {
     setAdding(true);
     setAddError(null);
     api
-      .addTarget(campaignId, { targetNumber: newNumber.trim(), reason: newReason.trim() || undefined })
+      .addTarget(campaignId, {
+        targetNumber: newNumber.trim(),
+        name: newName.trim() || undefined,
+        reason: newReason.trim() || undefined,
+      })
       .then(() => {
         setNewNumber('');
+        setNewName('');
         setNewReason('');
         setShowAdd(false);
         reload();
@@ -543,7 +553,7 @@ function TargetsList({ campaignId }: { campaignId: string }) {
 
       {showAdd && (
         <form onSubmit={addTarget} className="card-surface mb-3 grid gap-3 p-4">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="grid gap-3 sm:grid-cols-3">
             <Field label="Target phone number">
               <Input
                 value={newNumber}
@@ -551,6 +561,13 @@ function TargetsList({ campaignId }: { campaignId: string }) {
                 placeholder="e.g. 0244123456"
                 required
                 autoFocus
+              />
+            </Field>
+            <Field label="Customer name (optional)">
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="e.g. Derrick Owusu"
               />
             </Field>
             <Field label="Reason (optional)">
@@ -650,7 +667,7 @@ const EDIT_TABS: { id: EditTab; label: string }[] = [
 ];
 
 /** Dims the page and centers its children, closing on backdrop click or Escape. */
-function Modal({
+export function Modal({
   onClose,
   children,
   maxWidth = 'max-w-3xl',
@@ -713,9 +730,37 @@ function formatTime(iso: string) {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
+/** A call that never connected, or whose next step (confirmed or
+ * AI-suggested) is to follow up — the set of contacts worth recalling. */
+function needsFollowUp(row: CampaignReportRow): boolean {
+  if ((row.nextStep ?? row.aiSuggestion?.nextStep) === 'schedule_follow_up') return true;
+  return !row.call?.successful;
+}
+
 /** One row in the call list — a quick scan: who, when, and the logged/suggested action. */
-function ReportCallRow({ row, onView }: { row: CampaignReportRow; onView: () => void }) {
+function ReportCallRow({
+  row,
+  campaignId,
+  onView,
+}: {
+  row: CampaignReportRow;
+  campaignId: string;
+  onView: () => void;
+}) {
   const when = row.call?.setupTime ?? row.lastCallTime;
+  const [recalling, setRecalling] = useState(false);
+  const [recallMsg, setRecallMsg] = useState<string | null>(null);
+
+  function recallNow() {
+    setRecalling(true);
+    setRecallMsg(null);
+    api
+      .callNow(row.phone.replace(/^tel:/, ''), row.reason ?? undefined, campaignId, true)
+      .then((res) => setRecallMsg(res.dial?.dialed ? 'Calling now' : `Not called — ${res.reason ?? 'rejected'}`))
+      .catch((err: Error) => setRecallMsg(err.message))
+      .finally(() => setRecalling(false));
+  }
+
   return (
     <tr className="border-t border-border hover:bg-secondary">
       <td className="px-5 py-3.5">
@@ -732,7 +777,16 @@ function ReportCallRow({ row, onView }: { row: CampaignReportRow; onView: () => 
       <td className="px-5 py-3.5 text-muted-foreground">{when ? formatShortDate(when) : '—'}</td>
       <td className="px-5 py-3.5 text-muted-foreground">{when ? formatTime(when) : '—'}</td>
       <td className="px-5 py-3.5">
-        {row.outcome ? (
+        {row.nextStep || row.aiSuggestion?.nextStep ? (
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
+              row.nextStep ? 'bg-foreground/5 text-foreground' : 'bg-primary/10 text-primary'
+            }`}
+          >
+            {!row.nextStep && 'AI: '}
+            {nextStepLabel((row.nextStep ?? row.aiSuggestion?.nextStep) as string)}
+          </span>
+        ) : row.outcome ? (
           <span className="inline-flex items-center gap-1.5 text-foreground">
             <span className="size-2 rounded-full bg-green-500" />
             {outcomeLabel(row.outcome)}
@@ -742,18 +796,32 @@ function ReportCallRow({ row, onView }: { row: CampaignReportRow; onView: () => 
             AI: {outcomeLabel(row.aiSuggestion.outcome)}
           </span>
         ) : (
-          <span className="text-muted-foreground">—</span>
+          <span className="text-muted-foreground">No action yet</span>
         )}
       </td>
       <td className="px-5 py-3.5 text-right">
-        <button
-          type="button"
-          onClick={onView}
-          title="View details"
-          className="inline-flex size-8 cursor-pointer items-center justify-center rounded-full border border-input bg-card text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-        >
-          <Eye className="size-3.5" />
-        </button>
+        <div className="flex items-center justify-end gap-2">
+          {recallMsg && <span className="text-xs text-muted-foreground">{recallMsg}</span>}
+          {needsFollowUp(row) && (
+            <button
+              type="button"
+              onClick={recallNow}
+              disabled={recalling}
+              title="Call this number now"
+              className="inline-flex size-8 cursor-pointer items-center justify-center rounded-full border border-input bg-card text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <PhoneCall className="size-3.5" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onView}
+            title="View details"
+            className="inline-flex size-8 cursor-pointer items-center justify-center rounded-full border border-input bg-card text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+          >
+            <Eye className="size-3.5" />
+          </button>
+        </div>
       </td>
     </tr>
   );
@@ -1044,11 +1112,36 @@ export function CampaignReportPage({ campaignId }: { campaignId: string }) {
       .finally(() => setRecSaving(false));
   }
 
+  const [bulkCalling, setBulkCalling] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<{ done: number; total: number } | null>(null);
+  const [bulkError, setBulkError] = useState<string | null>(null);
+
+  async function callAllFollowUps() {
+    const rows = (data?.rows ?? []).filter(needsFollowUp);
+    if (rows.length === 0) return;
+    setBulkCalling(true);
+    setBulkError(null);
+    setBulkProgress({ done: 0, total: rows.length });
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        await api.callNow(row.phone.replace(/^tel:/, ''), row.reason ?? undefined, campaignId, true);
+      } catch (err) {
+        setBulkError((err as Error).message);
+      }
+      setBulkProgress({ done: i + 1, total: rows.length });
+      // Space calls out so the account's own call-rate limit isn't hit.
+      if (i < rows.length - 1) await new Promise((r) => setTimeout(r, 1200));
+    }
+    setBulkCalling(false);
+    reload();
+  }
+
   return (
     <div>
       <button
         type="button"
-        onClick={() => navigate('/outreach/campaigns')}
+        onClick={() => navigate(appPath('campaigns'))}
         className="mb-4 inline-flex cursor-pointer items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground"
       >
         <ArrowLeft className="size-4" />
@@ -1066,7 +1159,7 @@ export function CampaignReportPage({ campaignId }: { campaignId: string }) {
               <span className="ml-2 text-base font-normal text-muted-foreground">Report</span>
             </h2>
             <a
-              href={`/api/v1/outreach/campaigns/${campaignId}/report/export`}
+              href={`${API_BASE_URL}/api/v1/outreach/campaigns/${campaignId}/report/export`}
               className="inline-flex items-center gap-1.5 rounded-full border border-input bg-card px-3.5 py-2 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
             >
               <Download className="size-4" />
@@ -1087,6 +1180,32 @@ export function CampaignReportPage({ campaignId }: { campaignId: string }) {
             <StatCard label="Reviewed" value={data.reviewedCount} color="green" />
             <StatCard label="Needs follow-up" value={data.needsFollowUp} color="amber" />
           </div>
+
+          {data.rows.filter(needsFollowUp).length > 0 && (
+            <div className="card-surface mb-6 flex flex-wrap items-center justify-between gap-3 p-4">
+              <p className="text-sm text-foreground">
+                <strong>{data.rows.filter(needsFollowUp).length}</strong> contact
+                {data.rows.filter(needsFollowUp).length === 1 ? '' : 's'} didn't connect or need a
+                follow-up.
+              </p>
+              <div className="flex items-center gap-3">
+                {bulkProgress && (
+                  <span className="text-xs text-muted-foreground">
+                    {bulkCalling
+                      ? `Calling ${bulkProgress.done}/${bulkProgress.total}…`
+                      : `Called ${bulkProgress.done}/${bulkProgress.total}`}
+                  </span>
+                )}
+                <Btn type="button" onClick={callAllFollowUps} disabled={bulkCalling}>
+                  <span className="flex items-center gap-1.5">
+                    <PhoneCall className="size-4" />
+                    {bulkCalling ? 'Calling…' : 'Call all now'}
+                  </span>
+                </Btn>
+              </div>
+              <ErrorBanner error={bulkError} />
+            </div>
+          )}
 
           <div className="card-surface mb-6 overflow-hidden">
             {data.rows.length === 0 ? (
@@ -1119,6 +1238,7 @@ export function CampaignReportPage({ campaignId }: { campaignId: string }) {
                       <ReportCallRow
                         key={row.targetId}
                         row={row}
+                        campaignId={campaignId}
                         onView={() => setDetailRow(row)}
                       />
                     ))}
@@ -1342,7 +1462,9 @@ export function AttemptsPage() {
               <StatusBadge status={a.status} />
             </td>
             <td className="px-5 py-3.5 tabular-nums text-muted-foreground">{a.attemptNumber}</td>
-            <td className="px-5 py-3.5 text-muted-foreground">{a.scheduledAt}</td>
+            <td className="px-5 py-3.5 text-muted-foreground">
+              {formatShortDate(a.scheduledAt)} · {formatTime(a.scheduledAt)}
+            </td>
             <td className="px-5 py-3.5 text-destructive">{a.lastError}</td>
           </tr>
         ))}
@@ -1381,7 +1503,7 @@ function oneYearFromTodayIso() {
 }
 
 /** Matches the purple-headed grouped boxes on LiveHub's own "Create a campaign" form. */
-function FormSection({ title, children }: { title: string; children: ReactNode }) {
+export function FormSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="rounded-xl bg-secondary/60 p-5">
       <h3 className="mb-3 text-sm font-semibold text-primary">{title}</h3>
@@ -1673,6 +1795,13 @@ function CampaignForm({
     initial?.detectionCapabilities.machineDetection ?? 'Disabled',
   );
   const [aiContext, setAiContext] = useState('');
+  const [aiToolNames, setAiToolNames] = useState<string[]>([]);
+  const [aiDocumentIds, setAiDocumentIds] = useState<string[]>([]);
+  // Set by AiContextEditor once it knows whether THIS campaign's AI settings
+  // are the ones actually live on the tenant's shared agent — surfaced here
+  // too since Campaign Control (the Unlock toggle) is what actually launches
+  // calls, and it's easy to miss the warning if it only showed lower down.
+  const [aiStaleName, setAiStaleName] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -1788,22 +1917,41 @@ function CampaignForm({
       .createCampaign({ campaignName: campaignName.trim(), ...schedulerPayload(), lockOnCreate: locked })
       .then((created) => {
         setCreatedCampaignId(created.campaignID);
-        setStep((s) => s + 1);
+        // Context may already have been typed in during free navigation to
+        // step 4 before the campaign existed — persist it now that it can be.
+        const pendingContext = aiContext.trim();
+        return pendingContext
+          ? api
+              .setAiContext(created.campaignID, {
+                aiContext: pendingContext,
+                toolNames: aiToolNames,
+                documentIds: aiDocumentIds,
+              })
+              .catch(() => {})
+          : undefined;
       })
+      .then(() => setStep((s) => s + 1))
       .catch((err: Error) => setError(err.message))
       .finally(() => setSubmitting(false));
   }
 
   function saveContextAndContinue(e: FormEvent) {
     e.preventDefault();
-    if (!aiContext.trim()) {
+    if (!createdCampaignId || !aiContext.trim()) {
+      // No campaign to save against yet (free navigation got here before
+      // step 3's "Create campaign"), or nothing to save — the text, if any,
+      // stays in local state and is persisted once the campaign is created.
       setStep((s) => s + 1);
       return;
     }
     setSubmitting(true);
     setError(null);
     api
-      .setAiContext(createdCampaignId!, aiContext.trim())
+      .setAiContext(createdCampaignId, {
+        aiContext: aiContext.trim(),
+        toolNames: aiToolNames,
+        documentIds: aiDocumentIds,
+      })
       .then(() => setStep((s) => s + 1))
       .catch((err: Error) => setError(err.message))
       .finally(() => setSubmitting(false));
@@ -1811,11 +1959,10 @@ function CampaignForm({
 
   if (mode === 'create') {
     const stepLabels = ['Basics', 'Schedule', 'Call rate', 'Failure handling', 'AI context', 'Upload contacts'];
-    // Steps 4-5 save against the campaign itself, which doesn't exist until
-    // step 3's "Create campaign" actually runs — jumping there earlier
-    // would have nothing to save against.
+    // Every step is viewable at any time — Upload contacts just shows an
+    // empty state until the campaign actually exists (step 3). Validation
+    // stays gated at the real submit points, not at navigation.
     const goToStep = (i: number) => {
-      if (i >= 4 && !createdCampaignId) return;
       setError(null);
       setStep(i);
     };
@@ -1823,31 +1970,28 @@ function CampaignForm({
       <div className="grid gap-5">
         <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
           {stepLabels.map((label, i) => {
-            const reachable = i < 4 || !!createdCampaignId;
             return (
               <span key={label} className="flex items-center gap-1.5">
                 <button
                   type="button"
                   onClick={() => goToStep(i)}
-                  disabled={!reachable}
-                  title={reachable ? `Go to ${label}` : 'Create the campaign first (step 4) to unlock this step'}
-                  className={`flex size-5 shrink-0 items-center justify-center rounded-full text-[11px] font-medium transition-colors ${
+                  title={`Go to ${label}`}
+                  className={`flex size-5 shrink-0 cursor-pointer items-center justify-center rounded-full text-[11px] font-medium transition-colors hover:ring-2 hover:ring-primary/30 ${
                     i === step
                       ? 'bg-primary text-primary-foreground'
                       : i < step
                         ? 'bg-primary/15 text-primary'
                         : 'bg-secondary text-muted-foreground'
-                  } ${reachable ? 'cursor-pointer hover:ring-2 hover:ring-primary/30' : 'cursor-not-allowed opacity-50'}`}
+                  }`}
                 >
                   {i < step ? '✓' : i + 1}
                 </button>
                 <button
                   type="button"
                   onClick={() => goToStep(i)}
-                  disabled={!reachable}
-                  className={`text-xs font-medium transition-colors ${
+                  className={`cursor-pointer text-xs font-medium transition-colors hover:text-foreground ${
                     i === step ? 'text-foreground' : 'text-muted-foreground'
-                  } ${reachable ? 'cursor-pointer hover:text-foreground' : 'cursor-not-allowed opacity-50'}`}
+                  }`}
                 >
                   {label}
                 </button>
@@ -2133,32 +2277,47 @@ function CampaignForm({
           <form onSubmit={saveContextAndContinue} className="grid gap-4">
             <ErrorBanner error={error} />
             <FormSection title="AI Agent Context">
-              <Hint>
-                Describe what this campaign is about so the AI bot knows how to talk to
-                contacts — industry, product, tone, key talking points. Combined with each
-                contact's own reason at call time.
-              </Hint>
-              <Textarea
-                rows={4}
-                value={aiContext}
-                onChange={(e) => setAiContext(e.target.value)}
-                placeholder="e.g. This is a car insurance renewal reminder campaign for Ghanaian customers. Be warm, concise, and quote amounts in GHS."
+              <AiContextFields
+                aiContext={aiContext}
+                onAiContextChange={setAiContext}
+                toolNames={aiToolNames}
+                onToolNamesChange={setAiToolNames}
+                documentIds={aiDocumentIds}
+                onDocumentIdsChange={setAiDocumentIds}
               />
+              {!createdCampaignId && (
+                <Hint>Applied to the agent once you create the campaign in the Failure handling step.</Hint>
+              )}
             </FormSection>
             <div className="flex justify-end gap-2">
               <Btn type="button" kind="ghost" onClick={() => setStep((s) => s + 1)} disabled={submitting}>
                 Skip
               </Btn>
               <Btn type="submit" disabled={submitting}>
-                {submitting ? 'Saving…' : 'Save & continue'}
+                {submitting ? 'Saving…' : createdCampaignId ? 'Save & continue' : 'Continue'}
               </Btn>
             </div>
           </form>
         )}
 
-        {step === 5 && createdCampaignId && (
-          <ContactsUploadStep campaignId={createdCampaignId} onDone={onSaved} />
-        )}
+        {step === 5 &&
+          (createdCampaignId ? (
+            <ContactsUploadStep campaignId={createdCampaignId} onDone={onSaved} />
+          ) : (
+            <div className="grid gap-4">
+              <p className="rounded-xl bg-secondary px-3.5 py-2.5 text-sm text-muted-foreground">
+                Contacts upload against the campaign itself, so create it first.
+              </p>
+              <div className="flex justify-between">
+                <Btn type="button" kind="ghost" onClick={() => setStep((s) => s - 1)}>
+                  Back
+                </Btn>
+                <Btn type="button" onClick={() => setStep(3)}>
+                  Go create the campaign
+                </Btn>
+              </div>
+            </div>
+          ))}
       </div>
     );
   }
@@ -2168,6 +2327,15 @@ function CampaignForm({
       <ErrorBanner error={error} />
 
       <FormSection title="Campaign Control">
+        {aiStaleName && (
+          <div className="mb-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+            <strong>Heads up:</strong> the AI agent is currently running{' '}
+            <strong>{aiStaleName}</strong>'s prompt and tools, not this campaign's. If you
+            unlock this campaign now, it will call using {aiStaleName}'s settings. Open the AI
+            Agent Context section below and hit Save to make this campaign's settings live
+            again before unlocking.
+          </div>
+        )}
         <Toggle checked={locked} onChange={setLocked} offLabel="Unlock" onLabel="Lock" />
         <Hint>
           Leave on Unlock so the campaign starts calling once it has targets and its start
@@ -2397,7 +2565,7 @@ function CampaignForm({
 
       <FormSection title="AI Agent Context">
         {mode === 'edit' && campaignId ? (
-          <AiContextEditor campaignId={campaignId} />
+          <AiContextEditor campaignId={campaignId} onLiveStatus={setAiStaleName} />
         ) : (
           <>
             <Hint>
@@ -2430,56 +2598,140 @@ function CampaignForm({
 }
 
 /**
- * Industry/use-case context for the AI bot, independent of the rest of the
- * campaign form so it can be saved on its own (same pattern as the campaign
- * "recommendation" field on the report page) — merged into every call's
- * metadata alongside the per-contact reason, see outreach-dial.service.ts.
+ * The prompt/tools/documents picker shared between the create wizard's "AI
+ * context" step and the edit panel's AiContextEditor below — write a
+ * prompt (or generate one from a template) and pick which existing tools
+ * and knowledge docs this campaign uses. No separate "agent" concept: this
+ * data lives on the campaign and is pushed to the tenant's one bound AI
+ * agent whenever it's saved (see OutreachService.setAiContext).
  */
-function AiContextEditor({ campaignId }: { campaignId: string }) {
-  const { data, error, loading } = useLoad(
+function AiContextFields({
+  aiContext,
+  onAiContextChange,
+  toolNames,
+  onToolNamesChange,
+  documentIds,
+  onDocumentIdsChange,
+}: {
+  aiContext: string;
+  onAiContextChange: (text: string) => void;
+  toolNames: string[];
+  onToolNamesChange: (names: string[]) => void;
+  documentIds: string[];
+  onDocumentIdsChange: (ids: string[]) => void;
+}) {
+  const { data: toolsData } = useLoad(() => aiAgentApi.listTools(), 'campaign-ai-tools');
+  const { data: docsData } = useLoad(() => aiAgentApi.listDocuments(), 'campaign-ai-docs');
+
+  return (
+    <>
+      <PromptTemplatePicker onGenerate={onAiContextChange} />
+      <Textarea
+        rows={8}
+        value={aiContext}
+        onChange={(e) => onAiContextChange(e.target.value)}
+        placeholder="Describe what this campaign is about — industry, product, tone, key talking points — or generate a full prompt from a template above. Combined with each contact's own reason at call time."
+      />
+      {toolsData && toolsData.tools.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-sm font-medium text-foreground">Tools this campaign can use</p>
+          <MultiSelectDropdown
+            placeholder="Select tools…"
+            options={toolsData.tools.map((t) => ({ value: t.name, label: t.name, description: t.description ?? undefined }))}
+            selected={toolNames}
+            onChange={onToolNamesChange}
+          />
+        </div>
+      )}
+      {docsData && docsData.documents.length > 0 && (
+        <div>
+          <p className="mb-1.5 text-sm font-medium text-foreground">Knowledge base this campaign can use</p>
+          <MultiSelectDropdown
+            placeholder="Select knowledge base documents…"
+            options={docsData.documents.map((d) => ({ value: d.id, label: d.name }))}
+            selected={documentIds}
+            onChange={onDocumentIdsChange}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+function AiContextEditor({
+  campaignId,
+  onLiveStatus,
+}: {
+  campaignId: string;
+  onLiveStatus?: (liveCampaignName: string | null) => void;
+}) {
+  const { data, error, loading, reload } = useLoad(
     () => api.getAiContext(campaignId),
     `ai-context-${campaignId}`,
   );
   const [aiContext, setAiContext] = useState('');
+  const [toolNames, setToolNames] = useState<string[]>([]);
+  const [documentIds, setDocumentIds] = useState<string[]>([]);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (data) setAiContext(data.aiContext ?? '');
+    if (data) {
+      setAiContext(data.aiContext ?? '');
+      setToolNames(data.toolNames ?? []);
+      setDocumentIds(data.documentIds ?? []);
+    }
   }, [data]);
+
+  useEffect(() => {
+    onLiveStatus?.(data && !data.isLive ? data.liveCampaignName : null);
+    // Clear the warning once this component unmounts (e.g. switching tabs).
+    return () => onLiveStatus?.(null);
+  }, [data, onLiveStatus]);
 
   function save() {
     setSaving(true);
     setSaveError(null);
     setSaved(false);
     api
-      .setAiContext(campaignId, aiContext)
-      .then(() => setSaved(true))
+      .setAiContext(campaignId, { aiContext, toolNames, documentIds })
+      .then(() => {
+        setSaved(true);
+        reload();
+      })
       .catch((err: Error) => setSaveError(err.message))
       .finally(() => setSaving(false));
   }
 
   return (
-    <div>
+    <div className="grid gap-4">
       <Hint>
-        Describe what this campaign is about so the AI bot knows how to talk to contacts —
-        industry, product, tone, key talking points. Combined with each contact's own reason at
-        call time.
+        This is the prompt, tools, and knowledge this campaign's calls actually run on — saving
+        here applies it immediately. Combined with each contact's own reason at call time.
       </Hint>
       {loading && !data && <p className="text-sm text-muted-foreground">Loading…</p>}
       <ErrorBanner error={error} />
-      <Textarea
-        rows={4}
-        value={aiContext}
-        onChange={(e) => setAiContext(e.target.value)}
-        placeholder="e.g. This is a car insurance renewal reminder campaign for Ghanaian customers. Be warm, concise, and quote amounts in GHS."
+      {data && !data.isLive && (
+        <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+          <strong>Not currently live:</strong> the agent is running{' '}
+          <strong>{data.liveCampaignName}</strong>'s prompt and tools right now. Hit Save below
+          to make this campaign's settings live again.
+        </div>
+      )}
+      <AiContextFields
+        aiContext={aiContext}
+        onAiContextChange={setAiContext}
+        toolNames={toolNames}
+        onToolNamesChange={setToolNames}
+        documentIds={documentIds}
+        onDocumentIdsChange={setDocumentIds}
       />
-      {saved && <p className="mt-2 text-sm text-green-700">AI context saved.</p>}
+      {saved && <p className="text-sm text-green-700">Saved and applied to this campaign's agent.</p>}
       <ErrorBanner error={saveError} />
-      <div className="mt-2">
+      <div>
         <Btn type="button" onClick={save} disabled={saving}>
-          {saving ? 'Saving…' : 'Save AI context'}
+          {saving ? 'Saving…' : 'Save'}
         </Btn>
       </div>
     </div>
@@ -2633,7 +2885,7 @@ function CampaignRow({
 
   return (
     <tr
-      onClick={onToggle}
+      onClick={() => navigate(appPath(`campaigns/${campaign.campaignID}/report`))}
       className={`cursor-pointer border-t border-border transition-colors ${
         expanded ? 'bg-accent' : 'hover:bg-secondary'
       }`}
@@ -2671,17 +2923,6 @@ function CampaignRow({
         </td>
         <td className="px-5 py-4 text-right">
           <div className="flex items-center justify-end gap-2">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                navigate(`/outreach/campaigns/${campaign.campaignID}/report`);
-              }}
-              title="View report"
-              className="inline-flex size-8 cursor-pointer items-center justify-center rounded-full border border-input bg-card text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            >
-              <FileText className="size-3.5" />
-            </button>
             <button
               type="button"
               onClick={(e) => {

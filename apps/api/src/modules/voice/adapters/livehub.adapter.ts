@@ -11,6 +11,23 @@ import { badRequest } from '../../../common/errors';
 const BASE_URL = 'https://livehub.audiocodes.io';
 const AI_AGENTS_PATH = '/ai-framework-management/api/v1';
 
+/** OpenAI's own Realtime voice names — the only voice options that exist
+ * for an agent running on gpt-realtime, since there's no separate TTS step
+ * to swap in a third-party voice like ElevenLabs. Verified against the
+ * live LiveHub AI Agents OpenAPI spec (OpenAIRealtimeModel.voice enum). */
+export const OPENAI_REALTIME_VOICES = [
+  'alloy',
+  'ash',
+  'ballad',
+  'coral',
+  'echo',
+  'sage',
+  'shimmer',
+  'verse',
+  'marin',
+  'cedar',
+] as const;
+
 export interface AiAgentSummary {
   id: string;
   name: string;
@@ -202,6 +219,55 @@ export interface ToolSummary {
   type: string;
   method: string | null;
   url: string | null;
+}
+
+export interface ToolParam {
+  name: string;
+  description: string;
+  required?: boolean;
+  type?: string;
+  values?: string[] | null;
+}
+
+export interface ToolAuth {
+  type: 'none' | 'basic' | 'bearer' | 'oauth2';
+  token?: string | null;
+  username?: string | null;
+  password?: string | null;
+  clientId?: string | null;
+  clientSecret?: string | null;
+  scope?: string | null;
+  url?: string | null;
+}
+
+export interface ToolDetail extends ToolSummary {
+  headers: string | null;
+  content: string | null;
+  params: ToolParam[];
+  auth: ToolAuth | null;
+  flow: string | null;
+  mcpTools: string | null;
+}
+
+export interface CallTransferCondition {
+  phone: string;
+  message: string;
+  patterns: string[];
+  wholeWords: boolean;
+}
+
+export interface ToolInput {
+  name: string;
+  description?: string;
+  type?: 'rest' | 'mcp' | 'flow';
+  method?: string;
+  url?: string;
+  headers?: string;
+  content?: string;
+  params?: ToolParam[];
+  auth?: ToolAuth;
+  flow?: string;
+  mcpTools?: string;
 }
 
 export interface CampaignOverview {
@@ -929,6 +995,133 @@ export class LiveHubAdapter implements VoiceProviderAdapter {
     }));
   }
 
+  private static rawAuthToToolAuth(raw: unknown): ToolAuth | null {
+    if (!raw || typeof raw !== 'object') return null;
+    const a = raw as Record<string, unknown>;
+    return {
+      type: (a.type as ToolAuth['type']) ?? 'none',
+      token: (a.token as string) ?? null,
+      username: (a.username as string) ?? null,
+      password: (a.password as string) ?? null,
+      clientId: (a.client_id as string) ?? null,
+      clientSecret: (a.client_secret as string) ?? null,
+      scope: (a.scope as string) ?? null,
+      url: (a.url as string) ?? null,
+    };
+  }
+
+  private static toolAuthToRaw(auth: ToolAuth | undefined): Record<string, unknown> | undefined {
+    if (!auth) return undefined;
+    return {
+      type: auth.type,
+      token: auth.token || undefined,
+      username: auth.username || undefined,
+      password: auth.password || undefined,
+      client_id: auth.clientId || undefined,
+      client_secret: auth.clientSecret || undefined,
+      scope: auth.scope || undefined,
+      url: auth.url || undefined,
+    };
+  }
+
+  private static rawParamsToToolParams(raw: unknown): ToolParam[] {
+    if (!Array.isArray(raw)) return [];
+    return raw.map((p) => ({
+      name: p.name,
+      description: p.description ?? '',
+      required: p.required ?? true,
+      type: p.type ?? 'str',
+      values: p.values ?? null,
+    }));
+  }
+
+  private static toolParamsToRaw(params: ToolParam[] | undefined): unknown[] | undefined {
+    if (!params) return undefined;
+    return params.map((p) => ({
+      name: p.name,
+      description: p.description,
+      required: p.required ?? true,
+      type: p.type ?? 'str',
+      values: p.values ?? undefined,
+    }));
+  }
+
+  private static rawToToolDetail(raw: Record<string, unknown>): ToolDetail {
+    return {
+      id: (raw.id ?? raw._id) as string,
+      name: raw.name as string,
+      description: (raw.description as string) ?? null,
+      type: (raw.type as string) ?? 'rest',
+      method: (raw.method as string) ?? null,
+      url: (raw.url as string) ?? null,
+      headers: (raw.headers as string) ?? null,
+      content: (raw.content as string) ?? null,
+      params: LiveHubAdapter.rawParamsToToolParams(raw.params),
+      auth: LiveHubAdapter.rawAuthToToolAuth(raw.auth),
+      flow: (raw.flow as string) ?? null,
+      mcpTools: (raw.mcp_tools as string) ?? null,
+    };
+  }
+
+  private static toolInputToRaw(input: ToolInput): Record<string, unknown> {
+    return {
+      name: input.name,
+      description: input.description ?? undefined,
+      type: input.type ?? undefined,
+      method: input.method ?? undefined,
+      url: input.url ?? undefined,
+      headers: input.headers ?? undefined,
+      content: input.content ?? undefined,
+      params: LiveHubAdapter.toolParamsToRaw(input.params),
+      auth: LiveHubAdapter.toolAuthToRaw(input.auth),
+      flow: input.flow ?? undefined,
+      mcp_tools: input.mcpTools ?? undefined,
+    };
+  }
+
+  async getTool(toolId: string): Promise<ToolDetail> {
+    const res = await this.request(`${AI_AGENTS_PATH}/tools/${toolId}`);
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub get tool failed (${res.status}): ${bodyText}`);
+    }
+    return LiveHubAdapter.rawToToolDetail(JSON.parse(bodyText));
+  }
+
+  /** Creates the tool directly on LiveHub — it shows up in the AudioCodes
+   * dashboard exactly as if it had been built there by hand. */
+  async createTool(input: ToolInput): Promise<ToolDetail> {
+    const res = await this.request(`${AI_AGENTS_PATH}/tools`, {
+      method: 'POST',
+      body: JSON.stringify(LiveHubAdapter.toolInputToRaw(input)),
+    });
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub create tool failed (${res.status}): ${bodyText}`);
+    }
+    return LiveHubAdapter.rawToToolDetail(JSON.parse(bodyText));
+  }
+
+  async updateTool(toolId: string, input: Partial<ToolInput>): Promise<ToolDetail> {
+    const res = await this.request(`${AI_AGENTS_PATH}/tools/${toolId}`, {
+      method: 'PUT',
+      body: JSON.stringify(LiveHubAdapter.toolInputToRaw(input as ToolInput)),
+    });
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub update tool failed (${res.status}): ${bodyText}`);
+    }
+    return LiveHubAdapter.rawToToolDetail(JSON.parse(bodyText));
+  }
+
+  async deleteTool(toolId: string): Promise<void> {
+    const res = await this.request(`${AI_AGENTS_PATH}/tools/${toolId}`, { method: 'DELETE' });
+    if (!res.ok) {
+      const bodyText = await res.text();
+      throw new Error(`LiveHub delete tool failed (${res.status}): ${bodyText}`);
+    }
+  }
+
   /**
    * AI Agents framework methods — separate ID space and permission namespace
    * (LIVEHUB/AIFRAMEWORK/*) from the campaignDialer bots/campaigns above, but
@@ -991,6 +1184,35 @@ export class LiveHubAdapter implements VoiceProviderAdapter {
     }
   }
 
+  /**
+   * The agent's opening line, spoken before the LLM takes over. Found this
+   * was set to the literal unresolved template "{identityPrompt}" — a
+   * variable nothing in our call pipeline (campaign dialer or single
+   * dialout) ever actually supplies — so every call's welcome message was
+   * silently broken, leaving the LLM to improvise its first turn blind.
+   * Replacing it with a real static greeting it can actually speak.
+   */
+  async getAgentWelcomeMessage(agentId: string): Promise<string | null> {
+    const res = await this.request(`${AI_AGENTS_PATH}/agents/${agentId}`);
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub get agent failed (${res.status}): ${bodyText}`);
+    }
+    const parsed = JSON.parse(bodyText) as { welcome?: { message?: string } };
+    return parsed.welcome?.message ?? null;
+  }
+
+  async updateAgentWelcomeMessage(agentId: string, message: string): Promise<void> {
+    const res = await this.request(`${AI_AGENTS_PATH}/agents/${agentId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ welcome: { message, reverse_message: '', type: 'static' } }),
+    });
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub update agent welcome message failed (${res.status}): ${bodyText}`);
+    }
+  }
+
   async updateAgentDocuments(agentId: string, documentIds: string[]): Promise<void> {
     const res = await this.request(`${AI_AGENTS_PATH}/agents/${agentId}`, {
       method: 'PUT',
@@ -999,6 +1221,133 @@ export class LiveHubAdapter implements VoiceProviderAdapter {
     const bodyText = await res.text();
     if (!res.ok) {
       throw new Error(`LiveHub update agent documents failed (${res.status}): ${bodyText}`);
+    }
+  }
+
+  /** tools_config entries reference a tool by its "name" field, not its
+   * database id — confirmed live against a real agent's config (e.g.
+   * tool_id: "confirm_identity" matching that tool's name, not a UUID).
+   * Only "custom" (REST/MCP) tool entries are touched here; any other
+   * built-in tool_config entry type (end_call, get_time, etc.) is left
+   * exactly as the agent already has it. */
+  async updateAgentTools(agentId: string, toolNames: string[]): Promise<void> {
+    const detailRes = await this.request(`${AI_AGENTS_PATH}/agents/${agentId}`);
+    const detailText = await detailRes.text();
+    if (!detailRes.ok) {
+      throw new Error(`LiveHub get agent failed (${detailRes.status}): ${detailText}`);
+    }
+    const current = JSON.parse(detailText) as {
+      tools_config?: Record<string, unknown>[];
+    };
+    const nonCustom = (current.tools_config ?? []).filter((t) => t.tool !== 'custom');
+    const custom = toolNames.map((name) => ({ tool: 'custom', tool_id: name, name: '', description: '' }));
+    const res = await this.request(`${AI_AGENTS_PATH}/agents/${agentId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ tools_config: [...nonCustom, ...custom] }),
+    });
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub update agent tools failed (${res.status}): ${bodyText}`);
+    }
+  }
+
+  /** The agent's voice isn't a top-level field — it lives nested under
+   * advanced_config.openai_realtime.voice (one of OpenAI's own Realtime
+   * voice names), only present once explicitly set. Each realtime provider
+   * (OpenAI, Grok, Nova Sonic, Gemini) has its own advanced_config block;
+   * this only touches OpenAI Realtime's, which is what every current agent
+   * runs on. */
+  async getAgentVoice(agentId: string): Promise<string | null> {
+    const res = await this.request(`${AI_AGENTS_PATH}/agents/${agentId}`);
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub get agent failed (${res.status}): ${bodyText}`);
+    }
+    const parsed = JSON.parse(bodyText) as {
+      advanced_config?: { openai_realtime?: { voice?: string } };
+    };
+    return parsed.advanced_config?.openai_realtime?.voice ?? null;
+  }
+
+  /** Native live call transfer — distinct from the "warm_transfer" custom
+   * tool already on most agents, which only logs a callback ticket for a
+   * human to follow up later. This is the platform's own real-time
+   * transfer: advanced_config.call_transfer_conditions, matched against the
+   * agent's own spoken response, actually bridges the call to a phone
+   * number. Lives under the same per-agent advanced_config merge pattern as
+   * voice. */
+  async getCallTransfer(agentId: string): Promise<CallTransferCondition | null> {
+    const res = await this.request(`${AI_AGENTS_PATH}/agents/${agentId}`);
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub get agent failed (${res.status}): ${bodyText}`);
+    }
+    const parsed = JSON.parse(bodyText) as {
+      advanced_config?: {
+        call_transfer_conditions?: { phone?: string; message?: string; patterns?: string[]; whole_words?: boolean }[];
+      };
+    };
+    const first = parsed.advanced_config?.call_transfer_conditions?.[0];
+    if (!first) return null;
+    return {
+      phone: first.phone ?? '',
+      message: first.message ?? '',
+      patterns: first.patterns ?? [],
+      wholeWords: first.whole_words ?? false,
+    };
+  }
+
+  async updateCallTransfer(agentId: string, condition: CallTransferCondition | null): Promise<void> {
+    const detailRes = await this.request(`${AI_AGENTS_PATH}/agents/${agentId}`);
+    const detailText = await detailRes.text();
+    if (!detailRes.ok) {
+      throw new Error(`LiveHub get agent failed (${detailRes.status}): ${detailText}`);
+    }
+    const current = JSON.parse(detailText) as { advanced_config?: Record<string, unknown> };
+    const advancedConfig = {
+      ...(current.advanced_config ?? {}),
+      call_transfer_conditions: condition
+        ? [
+            {
+              phone: condition.phone,
+              message: condition.message || undefined,
+              patterns: condition.patterns,
+              whole_words: condition.wholeWords ?? false,
+            },
+          ]
+        : [],
+    };
+    const res = await this.request(`${AI_AGENTS_PATH}/agents/${agentId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ advanced_config: advancedConfig }),
+    });
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub update call transfer failed (${res.status}): ${bodyText}`);
+    }
+  }
+
+  async updateAgentVoice(agentId: string, voice: string): Promise<void> {
+    const detailRes = await this.request(`${AI_AGENTS_PATH}/agents/${agentId}`);
+    const detailText = await detailRes.text();
+    if (!detailRes.ok) {
+      throw new Error(`LiveHub get agent failed (${detailRes.status}): ${detailText}`);
+    }
+    const current = JSON.parse(detailText) as { advanced_config?: Record<string, unknown> };
+    const advancedConfig = {
+      ...(current.advanced_config ?? {}),
+      openai_realtime: {
+        ...((current.advanced_config?.openai_realtime as Record<string, unknown>) ?? {}),
+        voice,
+      },
+    };
+    const res = await this.request(`${AI_AGENTS_PATH}/agents/${agentId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ advanced_config: advancedConfig }),
+    });
+    const bodyText = await res.text();
+    if (!res.ok) {
+      throw new Error(`LiveHub update agent voice failed (${res.status}): ${bodyText}`);
     }
   }
 

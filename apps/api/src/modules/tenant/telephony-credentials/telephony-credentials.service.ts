@@ -34,7 +34,7 @@ export class TelephonyCredentialsService {
       .where(tenantWhere(tenantTelephonyCredentials.tenantId, tenantId));
   }
 
-  async upsert(tenantId: string, dto: UpsertTelephonyCredentialDto, actorUserId: string) {
+  async upsert(tenantId: string, dto: UpsertTelephonyCredentialDto, actorUserId?: string) {
     const required = REQUIRED_CREDENTIAL_FIELDS[dto.provider];
     const missing = required.filter((field) => !dto.credentials[field]?.trim());
     if (missing.length > 0) {
@@ -63,7 +63,7 @@ export class TelephonyCredentialsService {
           authTag: encrypted?.authTag ?? null,
           ciphertext: encrypted?.ciphertext ?? null,
           isActive: true,
-          createdBy: actorUserId,
+          createdBy: actorUserId ?? null,
         })
         .returning(METADATA_COLUMNS);
     });

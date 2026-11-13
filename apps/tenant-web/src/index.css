@@ -42,24 +42,27 @@
 :root {
   --font-sora: 'Sora', system-ui, -apple-system, sans-serif;
 
-  --background: #f4f4f5;
-  --foreground: #111827;
+  /* Warm paper tones, matching the marketing site. The floating shell
+     itself (--card) stays pure white by design — only what surrounds
+     and accents it picks up the landing palette. */
+  --background: #f1ebdd;
+  --foreground: #16140f;
   --card: #ffffff;
-  --card-foreground: #111827;
-  --card-surface: #fcfcfb;
-  --content-background: #edf0f3;
+  --card-foreground: #16140f;
+  --card-surface: #fdfbf6;
+  --content-background: #f4efe2;
 
-  /* Teal/emerald accent, matching the call-center dashboard reference. */
-  --primary: #0d9488;
+  /* Orange accent, matching the landing page. */
+  --primary: #ff5a1f;
   --primary-foreground: #ffffff;
-  --primary-glow: #2dd4bf;
+  --primary-glow: #ff8a5c;
 
-  --secondary: #f1f5f4;
-  --secondary-foreground: #111827;
-  --muted: #f1f5f4;
-  --muted-foreground: #6b7280;
-  --accent: #ecfdf7;
-  --accent-foreground: #0d9488;
+  --secondary: #f1ebdd;
+  --secondary-foreground: #16140f;
+  --muted: #f1ebdd;
+  --muted-foreground: #6f6a5e;
+  --accent: #ffe3d4;
+  --accent-foreground: #ff5a1f;
 
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
@@ -68,21 +71,24 @@
   --warning: #f59e0b;
   --warning-foreground: #ffffff;
 
-  --border: #e3e8e7;
-  --input: #e3e8e7;
-  --ring: #0d9488;
+  --border: #e6ded0;
+  --input: #e6ded0;
+  --ring: #ff5a1f;
 
-  /* Dark icon rail, matching the reference's near-black sidebar against a light shell. */
-  --sidebar: #0b1320;
-  --sidebar-foreground: #e4e9ef;
-  --sidebar-muted: #6b7a8f;
-  --sidebar-active: #123a35;
+  /* Ink sidebar, matching the landing page's dark sections. */
+  --sidebar: #16140f;
+  --sidebar-foreground: #f7f3ea;
+  --sidebar-muted: #938d7e;
+  --sidebar-active: #3a1f10;
+  --sidebar-hover: rgba(255, 255, 255, 0.05);
 
-  /* Outer-page backdrop behind the floating app shell — a soft off-white,
-     not the dark teal glow this used to be. */
-  --shell-bg-1: #f7f7f8;
-  --shell-bg-2: #f0f1f2;
-  --shell-bg-3: #e8eaec;
+  /* Tenant-brandable active-nav shadow, overridden per tenant in App.tsx. */
+  --primary-shadow: rgba(255, 90, 31, 0.35);
+
+  /* Outer-page backdrop behind the floating white app shell. */
+  --shell-bg-1: #faf6ee;
+  --shell-bg-2: #f1ebdd;
+  --shell-bg-3: #ffe3d4;
 }
 
 html,

@@ -4,8 +4,24 @@ import { DRIZZLE } from '../../../db/database.module';
 import type { Database } from '../../../db/client';
 import { tenantAiAgentConfig } from '../../../db/schema';
 import { badRequest, serviceUnavailable } from '../../../common/errors';
+import { OPENAI_REALTIME_VOICES } from '../../voice/adapters/livehub.adapter';
 import { VoiceAdapterFactoryService } from '../../voice/voice-adapter-factory.service';
-import type { SetAiAgentDto, SetAiAgentModelDto, SetAiAgentPromptDto, UploadDocumentDto } from './dto/ai-agent.dto';
+import type {
+  SetAiAgentDto,
+  SetAiAgentModelDto,
+  SetAiAgentPromptDto,
+  SetAiAgentVoiceDto,
+  SetCallTransferDto,
+  SetWelcomeMessageDto,
+  ToolFormDto,
+  UploadDocumentDto,
+} from './dto/ai-agent.dto';
+
+const DEFAULT_TRANSFER_PATTERNS = [
+  "I'll connect you with a team member now",
+  'let me transfer you to someone who can help',
+  'connecting you with a member of our team',
+];
 
 /**
  * Thin proxy onto LiveHub's AI Agents framework — every value here (agent
@@ -132,6 +148,81 @@ export class AiAgentService {
     const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
     const tools = await this.run(() => liveHub.listTools());
     return { tools };
+  }
+
+  async getTool(tenantId: string, toolId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    return this.run(() => liveHub.getTool(toolId));
+  }
+
+  async createTool(tenantId: string, dto: ToolFormDto) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    return this.run(() => liveHub.createTool(dto));
+  }
+
+  async updateTool(tenantId: string, toolId: string, dto: ToolFormDto) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    return this.run(() => liveHub.updateTool(toolId, dto));
+  }
+
+  async deleteTool(tenantId: string, toolId: string) {
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    await this.run(() => liveHub.deleteTool(toolId));
+    return { deleted: true };
+  }
+
+  async getVoice(tenantId: string) {
+    const agentId = await this.requireAgentId(tenantId);
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const voice = await this.run(() => liveHub.getAgentVoice(agentId));
+    return { voice, options: OPENAI_REALTIME_VOICES };
+  }
+
+  async setVoice(tenantId: string, dto: SetAiAgentVoiceDto) {
+    const agentId = await this.requireAgentId(tenantId);
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    await this.run(() => liveHub.updateAgentVoice(agentId, dto.voice));
+    return { voice: dto.voice };
+  }
+
+  async getWelcomeMessage(tenantId: string) {
+    const agentId = await this.requireAgentId(tenantId);
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const message = await this.run(() => liveHub.getAgentWelcomeMessage(agentId));
+    return { message };
+  }
+
+  async setWelcomeMessage(tenantId: string, dto: SetWelcomeMessageDto) {
+    const agentId = await this.requireAgentId(tenantId);
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    await this.run(() => liveHub.updateAgentWelcomeMessage(agentId, dto.message));
+    return { message: dto.message };
+  }
+
+  async getCallTransfer(tenantId: string) {
+    const agentId = await this.requireAgentId(tenantId);
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const transfer = await this.run(() => liveHub.getCallTransfer(agentId));
+    return { transfer };
+  }
+
+  async setCallTransfer(tenantId: string, dto: SetCallTransferDto) {
+    const agentId = await this.requireAgentId(tenantId);
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const phone = dto.phone?.trim();
+    if (!phone) {
+      await this.run(() => liveHub.updateCallTransfer(agentId, null));
+      return { transfer: null };
+    }
+    const patterns = (dto.patterns ?? []).map((p) => p.trim()).filter(Boolean);
+    const condition = {
+      phone,
+      message: dto.message?.trim() ?? '',
+      patterns: patterns.length > 0 ? patterns : DEFAULT_TRANSFER_PATTERNS,
+      wholeWords: false,
+    };
+    await this.run(() => liveHub.updateCallTransfer(agentId, condition));
+    return { transfer: condition };
   }
 
   async deleteDocument(tenantId: string, documentId: string) {

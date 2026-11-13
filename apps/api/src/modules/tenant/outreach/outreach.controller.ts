@@ -239,4 +239,5 @@ export class OutreachController {
   callNow(@CurrentTenantActor() actor: TenantActor, @Body() dto: CallNowDto) {
     return this.outreach.callNow(actor.tenantId, dto.phone, dto.reason, dto.liveHubCampaignId, dto.instant);
   }
+
 }

@@ -31,7 +31,19 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { rawBody: true });
 
   app.setGlobalPrefix('api/v1', { exclude: ['health'] });
-  app.enableCors();
+  // Explicit origin allowlist (not the default wide-open enableCors()) —
+  // required once cookies are sent cross-site (SameSite=None): browsers
+  // reject a credentialed request against Access-Control-Allow-Origin: *.
+  // ALLOWED_ORIGINS is a comma-separated list; same-origin deploys (no
+  // separate frontend origin) can leave it unset entirely.
+  const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
+    .split(',')
+    .map((o) => o.trim())
+    .filter(Boolean);
+  app.enableCors({
+    origin: allowedOrigins.length > 0 ? allowedOrigins : true,
+    credentials: true,
+  });
   app.useGlobalPipes(
     new ValidationPipe({
       whitelist: true,

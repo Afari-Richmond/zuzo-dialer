@@ -1,0 +1,1 @@
+ALTER TABLE "tenant_ai_agent_config" ADD COLUMN "last_applied_campaign_id" text;

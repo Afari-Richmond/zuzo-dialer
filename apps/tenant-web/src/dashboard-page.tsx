@@ -17,7 +17,7 @@ const CAMPAIGN_STATUS_DOT: Record<string, string> = {
   Completed: 'bg-green-500',
 };
 
-type NavTarget = 'upload' | 'campaigns' | 'attempts' | 'analytics' | 'settings';
+type NavTarget = 'upload' | 'campaigns' | 'attempts' | 'analytics';
 
 function LinkOut({ onClick, children }: { onClick: () => void; children: string }) {
   return (
@@ -53,6 +53,41 @@ export function DashboardPage({ onNavigate }: { onNavigate: (id: NavTarget) => v
       <p className="mb-6 text-sm text-muted-foreground">
         An at-a-glance view of everything running across your outreach account.
       </p>
+
+      <div className="mb-6 flex flex-wrap gap-3">
+        <button
+          type="button"
+          onClick={() => onNavigate('upload')}
+          className="flex items-center gap-2 rounded-xl border border-primary/25 bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition-colors hover:border-primary/50 hover:bg-primary hover:text-primary-foreground"
+        >
+          <UploadCloud className="size-4" />
+          Upload contacts
+        </button>
+        <button
+          type="button"
+          onClick={() => onNavigate('campaigns')}
+          className="flex items-center gap-2 rounded-xl border border-primary/25 bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition-colors hover:border-primary/50 hover:bg-primary hover:text-primary-foreground"
+        >
+          <Megaphone className="size-4" />
+          New campaign
+        </button>
+        <button
+          type="button"
+          onClick={() => onNavigate('campaigns')}
+          className="flex items-center gap-2 rounded-xl border border-primary/25 bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition-colors hover:border-primary/50 hover:bg-primary hover:text-primary-foreground"
+        >
+          <Sparkles className="size-4" />
+          Configure AI agent
+        </button>
+        <button
+          type="button"
+          onClick={() => onNavigate('attempts')}
+          className="flex items-center gap-2 rounded-xl border border-primary/25 bg-accent px-4 py-3 text-sm font-medium text-accent-foreground transition-colors hover:border-primary/50 hover:bg-primary hover:text-primary-foreground"
+        >
+          <Phone className="size-4" />
+          Call attempts
+        </button>
+      </div>
 
       <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-4">
         <StatCard label="Campaigns" value={campaigns.length} color="gray" />
@@ -151,43 +186,8 @@ export function DashboardPage({ onNavigate }: { onNavigate: (id: NavTarget) => v
           ) : (
             <p className="mb-4 text-sm text-muted-foreground">No AI agent connected yet.</p>
           )}
-          <LinkOut onClick={() => onNavigate('settings')}>Manage agent</LinkOut>
+          <LinkOut onClick={() => onNavigate('campaigns')}>Manage agent</LinkOut>
         </div>
-      </div>
-
-      <div className="mt-6 flex flex-wrap gap-3">
-        <button
-          type="button"
-          onClick={() => onNavigate('upload')}
-          className="flex items-center gap-2 rounded-xl border border-input bg-card px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
-        >
-          <UploadCloud className="size-4" />
-          Upload contacts
-        </button>
-        <button
-          type="button"
-          onClick={() => onNavigate('campaigns')}
-          className="flex items-center gap-2 rounded-xl border border-input bg-card px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
-        >
-          <Megaphone className="size-4" />
-          New campaign
-        </button>
-        <button
-          type="button"
-          onClick={() => onNavigate('settings')}
-          className="flex items-center gap-2 rounded-xl border border-input bg-card px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
-        >
-          <Sparkles className="size-4" />
-          Configure AI agent
-        </button>
-        <button
-          type="button"
-          onClick={() => onNavigate('attempts')}
-          className="flex items-center gap-2 rounded-xl border border-input bg-card px-4 py-3 text-sm font-medium text-foreground transition-colors hover:bg-secondary"
-        >
-          <Phone className="size-4" />
-          Call attempts
-        </button>
       </div>
     </div>
   );

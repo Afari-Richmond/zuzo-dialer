@@ -1,3 +1,8 @@
+// Empty string keeps the old same-origin relative-URL behavior (API and
+// frontend served from one process); set VITE_API_URL at build time when
+// the frontend is deployed separately from the API (e.g. Vercel + Render).
+export const API_BASE_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -9,7 +14,7 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api/v1${path}`, {
+  const res = await fetch(`${API_BASE_URL}/api/v1${path}`, {
     credentials: 'include',
     ...init,
     headers: {
@@ -74,6 +79,29 @@ export const tenants = {
       method: 'PUT',
       body: JSON.stringify(dto),
     }).then((d) => d.adminSettings),
+  listTelephonyCredentials: (id: string) =>
+    request<{ credentials: TelephonyCredential[] }>(`/platform/tenants/${id}/telephony-credentials`).then(
+      (d) => d.credentials,
+    ),
+  upsertTelephonyCredential: (
+    id: string,
+    dto: { provider: string; label: string; credentials: Record<string, string> },
+  ) =>
+    request<{ credential: TelephonyCredential }>(`/platform/tenants/${id}/telephony-credentials`, {
+      method: 'PUT',
+      body: JSON.stringify(dto),
+    }).then((d) => d.credential),
+  deactivateTelephonyCredential: (id: string, credentialId: string) =>
+    request<{ ok: true }>(`/platform/tenants/${id}/telephony-credentials/${credentialId}`, { method: 'DELETE' }),
+};
+
+export type TelephonyCredential = {
+  id: string;
+  provider: string;
+  label: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type PlatformAdmin = {

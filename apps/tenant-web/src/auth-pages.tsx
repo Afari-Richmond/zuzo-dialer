@@ -1,6 +1,6 @@
 import { useState, type FormEvent, type ReactNode } from 'react';
 import { ApiError, api } from './api';
-import { navigate } from './nav';
+import { appPath, navigate } from './nav';
 import { Btn, ErrorBanner, Field, Input } from './ui';
 
 function AuthShell({
@@ -59,7 +59,7 @@ export function AcceptInvitePage() {
     try {
       await api.acceptInvite(token, password);
       setDone(true);
-      setTimeout(() => navigate('/outreach/'), 1500);
+      setTimeout(() => navigate(appPath()), 1500);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not accept invite');
     } finally {
@@ -154,7 +154,7 @@ export function ForgotPasswordPage() {
       )}
       <button
         type="button"
-        onClick={() => navigate('/outreach/')}
+        onClick={() => navigate(appPath())}
         className="mt-4 text-sm text-muted-foreground hover:text-foreground"
       >
         Back to sign in
@@ -186,7 +186,7 @@ export function ResetPasswordPage() {
     try {
       await api.resetPassword(token, password);
       setDone(true);
-      setTimeout(() => navigate('/outreach/'), 1500);
+      setTimeout(() => navigate(appPath()), 1500);
     } catch (err) {
       setError(err instanceof ApiError ? err.message : 'Could not reset password');
     } finally {

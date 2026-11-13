@@ -20,7 +20,16 @@ import type { TenantActor } from '../../auth/jwt-types';
 import { ApiExceptionFilter } from '../../../common/filters/http-exception.filter';
 import { ResponseInterceptor } from '../../../common/interceptors/response.interceptor';
 import { AiAgentService } from './ai-agent.service';
-import { SetAiAgentDto, SetAiAgentModelDto, SetAiAgentPromptDto, UploadDocumentDto } from './dto/ai-agent.dto';
+import {
+  SetAiAgentDto,
+  SetAiAgentModelDto,
+  SetAiAgentPromptDto,
+  SetAiAgentVoiceDto,
+  SetCallTransferDto,
+  SetWelcomeMessageDto,
+  ToolFormDto,
+  UploadDocumentDto,
+} from './dto/ai-agent.dto';
 import { badRequest } from '../../../common/errors';
 
 const MAX_DOCUMENT_BYTES = 20 * 1024 * 1024;
@@ -87,6 +96,68 @@ export class AiAgentController {
   @Get('tools')
   listTools(@CurrentTenantActor() actor: TenantActor) {
     return this.aiAgent.listTools(actor.tenantId);
+  }
+
+  @Get('tools/:id')
+  getTool(@CurrentTenantActor() actor: TenantActor, @Param('id') id: string) {
+    return this.aiAgent.getTool(actor.tenantId, id);
+  }
+
+  @Post('tools')
+  @UseGuards(TenantRolesGuard)
+  @TenantRoles('tenant_admin')
+  createTool(@CurrentTenantActor() actor: TenantActor, @Body() dto: ToolFormDto) {
+    return this.aiAgent.createTool(actor.tenantId, dto);
+  }
+
+  @Put('tools/:id')
+  @UseGuards(TenantRolesGuard)
+  @TenantRoles('tenant_admin')
+  updateTool(@CurrentTenantActor() actor: TenantActor, @Param('id') id: string, @Body() dto: ToolFormDto) {
+    return this.aiAgent.updateTool(actor.tenantId, id, dto);
+  }
+
+  @Delete('tools/:id')
+  @UseGuards(TenantRolesGuard)
+  @TenantRoles('tenant_admin')
+  deleteTool(@CurrentTenantActor() actor: TenantActor, @Param('id') id: string) {
+    return this.aiAgent.deleteTool(actor.tenantId, id);
+  }
+
+  @Get('voice')
+  getVoice(@CurrentTenantActor() actor: TenantActor) {
+    return this.aiAgent.getVoice(actor.tenantId);
+  }
+
+  @Put('voice')
+  @UseGuards(TenantRolesGuard)
+  @TenantRoles('tenant_admin')
+  setVoice(@CurrentTenantActor() actor: TenantActor, @Body() dto: SetAiAgentVoiceDto) {
+    return this.aiAgent.setVoice(actor.tenantId, dto);
+  }
+
+  @Get('welcome-message')
+  getWelcomeMessage(@CurrentTenantActor() actor: TenantActor) {
+    return this.aiAgent.getWelcomeMessage(actor.tenantId);
+  }
+
+  @Put('welcome-message')
+  @UseGuards(TenantRolesGuard)
+  @TenantRoles('tenant_admin')
+  setWelcomeMessage(@CurrentTenantActor() actor: TenantActor, @Body() dto: SetWelcomeMessageDto) {
+    return this.aiAgent.setWelcomeMessage(actor.tenantId, dto);
+  }
+
+  @Get('call-transfer')
+  getCallTransfer(@CurrentTenantActor() actor: TenantActor) {
+    return this.aiAgent.getCallTransfer(actor.tenantId);
+  }
+
+  @Put('call-transfer')
+  @UseGuards(TenantRolesGuard)
+  @TenantRoles('tenant_admin')
+  setCallTransfer(@CurrentTenantActor() actor: TenantActor, @Body() dto: SetCallTransferDto) {
+    return this.aiAgent.setCallTransfer(actor.tenantId, dto);
   }
 
   @Post('documents')

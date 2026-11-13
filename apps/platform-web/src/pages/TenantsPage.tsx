@@ -5,6 +5,7 @@ import {
   tenants as tenantsApi,
   type Tenant,
   type TenantAdminSettings,
+  type TelephonyCredential,
 } from '../api';
 import { Btn, ErrorBanner, Field, Input, Select, StatCard, StatusBadge, Table, Textarea, useLoad } from '../ui';
 
@@ -145,7 +146,10 @@ function TenantRow({
       {expanded && (
         <tr className="border-t border-border bg-secondary/40">
           <td colSpan={7} className="px-5 py-5">
-            <TenantAdminPanel tenantId={tenant.id} onSaved={onChanged} />
+            <div className="flex flex-col gap-6">
+              <TenantAdminPanel tenantId={tenant.id} onSaved={onChanged} />
+              <VoiceEngineCredentialsPanel tenantId={tenant.id} />
+            </div>
           </td>
         </tr>
       )}
@@ -259,6 +263,103 @@ function TenantAdminPanel({ tenantId, onSaved }: { tenantId: string; onSaved: ()
         <ErrorBanner error={saveError} />
       </div>
     </form>
+  );
+}
+
+/**
+ * Platform-only. This is where the AI voice engine's own credentials get
+ * wired up for a tenant — deliberately absent from tenant-web entirely. A
+ * tenant never has a reason to hold these, and showing them would be the
+ * one place our white-labeling could leak back to the underlying platform.
+ */
+function VoiceEngineCredentialsPanel({ tenantId }: { tenantId: string }) {
+  const [credentials, setCredentials] = useState<TelephonyCredential[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [outreachBotId, setOutreachBotId] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+
+  function load() {
+    tenantsApi
+      .listTelephonyCredentials(tenantId)
+      .then(setCredentials)
+      .catch((err: Error) => setLoadError(err.message));
+  }
+
+  useEffect(load, [tenantId]);
+
+  const active = credentials?.find((c) => c.provider === 'livehub' && c.isActive) ?? null;
+
+  function submit(e: FormEvent) {
+    e.preventDefault();
+    setSaving(true);
+    setSaveError(null);
+    setSaved(false);
+    tenantsApi
+      .upsertTelephonyCredential(tenantId, {
+        provider: 'livehub',
+        label: 'Voice AI engine',
+        credentials: { clientId, clientSecret, outreachBotId },
+      })
+      .then(() => {
+        setClientId('');
+        setClientSecret('');
+        setOutreachBotId('');
+        setSaved(true);
+        load();
+      })
+      .catch((err: Error) => setSaveError(err instanceof ApiError ? err.message : err.message))
+      .finally(() => setSaving(false));
+  }
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-5">
+      <h4 className="mb-1 text-sm font-semibold text-foreground">Voice AI engine</h4>
+      <p className="mb-4 text-sm text-muted-foreground">
+        The underlying AI voice platform's connection for this tenant — set up here only, never visible or
+        editable in the tenant's own dashboard.
+      </p>
+      <ErrorBanner error={loadError} />
+
+      {active && (
+        <div className="mb-4 flex items-center justify-between rounded-lg border border-green-200 bg-green-50 px-4 py-3">
+          <span className="text-sm text-green-800">Connected — "{active.label}" is active.</span>
+          <Btn
+            kind="ghost"
+            onClick={() => tenantsApi.deactivateTelephonyCredential(tenantId, active.id).then(load)}
+          >
+            Disconnect
+          </Btn>
+        </div>
+      )}
+
+      <form onSubmit={submit} className="grid gap-3 sm:grid-cols-3">
+        <Field label="Client ID">
+          <Input value={clientId} onChange={(e) => setClientId(e.target.value)} required />
+        </Field>
+        <Field label="Client secret">
+          <Input
+            type="password"
+            value={clientSecret}
+            onChange={(e) => setClientSecret(e.target.value)}
+            required
+          />
+        </Field>
+        <Field label="Outreach bot ID">
+          <Input value={outreachBotId} onChange={(e) => setOutreachBotId(e.target.value)} required />
+        </Field>
+        <div className="sm:col-span-3">
+          <Btn type="submit" disabled={saving}>
+            {saving ? 'Saving…' : active ? 'Replace connection' : 'Connect'}
+          </Btn>
+          {saved && <span className="ml-3 text-sm text-green-700">Saved.</span>}
+          <ErrorBanner error={saveError} />
+        </div>
+      </form>
+    </div>
   );
 }
 

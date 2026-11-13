@@ -10,6 +10,12 @@ export const tenantAiAgentConfig = pgTable('tenant_ai_agent_config', {
     .primaryKey()
     .references(() => tenants.id, { onDelete: 'cascade' }),
   agentId: text('agent_id'),
+  // Which campaign's prompt/tools/documents are actually live on the agent
+  // right now — set on every successful push in OutreachService.setAiContext.
+  // Since all of a tenant's campaigns share one agent, only one campaign's
+  // settings can be "live" at a time; this lets the UI warn when the
+  // campaign being viewed isn't it.
+  lastAppliedCampaignId: text('last_applied_campaign_id'),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .defaultNow()
     .notNull()

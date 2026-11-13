@@ -1,3 +1,8 @@
+// Empty string keeps the old same-origin relative-URL behavior (API and
+// frontend served from one process); set VITE_API_URL at build time when
+// the frontend is deployed separately from the API (e.g. Vercel + Render).
+export const API_BASE_URL = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '');
+
 export class ApiError extends Error {
   constructor(
     public status: number,
@@ -15,7 +20,7 @@ type Envelope<T> = {
 };
 
 async function request<T>(base: string, path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api/v1/${base}${path}`, {
+  const res = await fetch(`${API_BASE_URL}/api/v1/${base}${path}`, {
     credentials: 'include',
     ...init,
     headers: {
@@ -360,7 +365,7 @@ export const api = {
     request<{ deleted: boolean }>('outreach', `/campaigns/${id}`, { method: 'DELETE' }),
   campaignTargets: (id: string) =>
     request<{ targets: CampaignTarget[] }>('outreach', `/campaigns/${id}/targets`),
-  addTarget: (campaignId: string, input: { targetNumber: string; tag?: string; reason?: string }) =>
+  addTarget: (campaignId: string, input: { targetNumber: string; tag?: string; reason?: string; name?: string }) =>
     request<{ targetId?: string }>('outreach', `/campaigns/${campaignId}/targets`, {
       method: 'POST',
       body: JSON.stringify(input),
@@ -410,12 +415,22 @@ export const api = {
       body: JSON.stringify({ recommendation }),
     }),
   getAiContext: (campaignId: string) =>
-    request<{ aiContext: string | null }>('outreach', `/campaigns/${campaignId}/ai-context`),
-  setAiContext: (campaignId: string, aiContext: string) =>
-    request<{ aiContext: string }>('outreach', `/campaigns/${campaignId}/ai-context`, {
-      method: 'PUT',
-      body: JSON.stringify({ aiContext }),
-    }),
+    request<{
+      aiContext: string | null;
+      toolNames: string[];
+      documentIds: string[];
+      isLive: boolean;
+      liveCampaignName: string | null;
+    }>('outreach', `/campaigns/${campaignId}/ai-context`),
+  setAiContext: (
+    campaignId: string,
+    dto: { aiContext: string; toolNames?: string[]; documentIds?: string[] },
+  ) =>
+    request<{ aiContext: string; toolNames: string[]; documentIds: string[] }>(
+      'outreach',
+      `/campaigns/${campaignId}/ai-context`,
+      { method: 'PUT', body: JSON.stringify(dto) },
+    ),
   addDnc: (phone: string, reason?: string) =>
     request<{ phone: string; dnc: boolean }>('outreach', '/dnc', {
       method: 'POST',
@@ -450,12 +465,20 @@ export type TelephonyCredential = {
   updatedAt: string;
 };
 
-export type TenantBranding = { logoUrl: string | null; primaryColor: string | null };
+export type TenantBranding = {
+  logoUrl: string | null;
+  primaryColor: string | null;
+  sidebarColor: string | null;
+  accentColor: string | null;
+  textColor: string | null;
+  navActiveTextColor: string | null;
+  navInactiveTextColor: string | null;
+};
 export type TenantBrandingWithName = TenantBranding & { name: string };
 
 export const brandingApi = {
   get: () => request<TenantBrandingWithName>('tenant/branding', ''),
-  update: (dto: { logoUrl?: string; primaryColor?: string }) =>
+  update: (dto: Partial<TenantBranding>) =>
     request<TenantBranding>('tenant/branding', '', { method: 'PUT', body: JSON.stringify(dto) }),
 };
 
@@ -492,6 +515,50 @@ export type AgentTool = {
   method: string | null;
   url: string | null;
 };
+export type ToolParam = {
+  name: string;
+  description: string;
+  required?: boolean;
+  type?: string;
+  values?: string[] | null;
+};
+export type ToolAuth = {
+  type: 'none' | 'basic' | 'bearer' | 'oauth2';
+  token?: string | null;
+  username?: string | null;
+  password?: string | null;
+  clientId?: string | null;
+  clientSecret?: string | null;
+  scope?: string | null;
+  url?: string | null;
+};
+export type ToolDetail = AgentTool & {
+  headers: string | null;
+  content: string | null;
+  params: ToolParam[];
+  auth: ToolAuth | null;
+  flow: string | null;
+  mcpTools: string | null;
+};
+export type CallTransferCondition = {
+  phone: string;
+  message: string;
+  patterns: string[];
+  wholeWords: boolean;
+};
+export type ToolFormInput = {
+  name: string;
+  description?: string;
+  type?: 'rest' | 'mcp' | 'flow';
+  method?: string;
+  url?: string;
+  headers?: string;
+  content?: string;
+  params?: ToolParam[];
+  auth?: ToolAuth;
+  flow?: string;
+  mcpTools?: string;
+};
 
 export const aiAgentApi = {
   getConfig: () => request<{ agentId: string | null }>('tenant/ai-agent', '/config'),
@@ -525,6 +592,23 @@ export const aiAgentApi = {
   deleteDocument: (id: string) =>
     request<{ ok: boolean }>('tenant/ai-agent', `/documents/${id}`, { method: 'DELETE' }),
   listTools: () => request<{ tools: AgentTool[] }>('tenant/ai-agent', '/tools'),
+  getTool: (id: string) => request<ToolDetail>('tenant/ai-agent', `/tools/${id}`),
+  createTool: (dto: ToolFormInput) =>
+    request<ToolDetail>('tenant/ai-agent', '/tools', { method: 'POST', body: JSON.stringify(dto) }),
+  updateTool: (id: string, dto: ToolFormInput) =>
+    request<ToolDetail>('tenant/ai-agent', `/tools/${id}`, { method: 'PUT', body: JSON.stringify(dto) }),
+  deleteTool: (id: string) =>
+    request<{ deleted: boolean }>('tenant/ai-agent', `/tools/${id}`, { method: 'DELETE' }),
+  getVoice: () => request<{ voice: string | null; options: readonly string[] }>('tenant/ai-agent', '/voice'),
+  setVoice: (voice: string) =>
+    request<{ voice: string }>('tenant/ai-agent', '/voice', { method: 'PUT', body: JSON.stringify({ voice }) }),
+  getCallTransfer: () =>
+    request<{ transfer: CallTransferCondition | null }>('tenant/ai-agent', '/call-transfer'),
+  setCallTransfer: (dto: { phone?: string; message?: string; patterns?: string[] }) =>
+    request<{ transfer: CallTransferCondition | null }>('tenant/ai-agent', '/call-transfer', {
+      method: 'PUT',
+      body: JSON.stringify(dto),
+    }),
 };
 
 export type TeamMember = {
@@ -550,3 +634,4 @@ export const teamApi = {
       body: JSON.stringify(dto),
     }),
 };
+

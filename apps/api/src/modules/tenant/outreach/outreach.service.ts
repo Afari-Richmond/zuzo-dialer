@@ -3,7 +3,12 @@ import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import * as XLSX from 'xlsx';
 import { DRIZZLE } from '../../../db/database.module';
 import type { Database } from '../../../db/client';
-import { voiceCampaignOutcomes, voiceCampaignReports, voiceOutboundAttempts } from '../../../db/schema';
+import {
+  tenantAiAgentConfig,
+  voiceCampaignOutcomes,
+  voiceCampaignReports,
+  voiceOutboundAttempts,
+} from '../../../db/schema';
 import { badRequest } from '../../../common/errors';
 import { VoiceAdapterFactoryService } from '../../voice/voice-adapter-factory.service';
 import type { CallRecord, PostCallAnalysisResult } from '../../voice/adapters/livehub.adapter';
@@ -150,6 +155,7 @@ export class OutreachService {
     }
     const { aiContext } = await this.getAiContext(tenantId, campaignId);
     const metadata = {
+      ...(dto.name ? { name: dto.name } : {}),
       ...(dto.reason ? { reason: dto.reason } : {}),
       ...(aiContext ? { campaignContext: aiContext } : {}),
     };
@@ -197,12 +203,14 @@ export class OutreachService {
       throw badRequest('MISSING_PHONE_COLUMN', 'Could not find a phone column (expected a header like "phone")');
     }
     const reasonKey = findKey(rows[0], REASON_HEADERS);
+    const nameKey = findKey(rows[0], NAME_HEADERS);
 
     const { aiContext } = await this.getAiContext(tenantId, campaignId);
     const parsed = rows.map((row, index) => {
       const phone = normalizeGhanaPhone(String(row[phoneKey] ?? '').trim());
       const reason = reasonKey ? String(row[reasonKey] ?? '').trim() : '';
-      return { row: index + 2, phone, reason: reason || undefined };
+      const name = nameKey ? String(row[nameKey] ?? '').trim() : '';
+      return { row: index + 2, phone, reason: reason || undefined, name: name || undefined };
     });
 
     const results: { row: number; phone?: string; accepted: boolean; reason?: string }[] = [];
@@ -217,6 +225,7 @@ export class OutreachService {
         continue;
       }
       const metadata = {
+        ...(r.name ? { name: r.name } : {}),
         ...(r.reason ? { reason: r.reason } : {}),
         ...(aiContext ? { campaignContext: aiContext } : {}),
       };
@@ -342,11 +351,22 @@ export class OutreachService {
       const call = callByPhone.get(normalizePhone(t.setting.targetNumber));
       const pca = call?.botConversationId ? (pcaByConversationId.get(call.botConversationId) ?? null) : null;
       const contact = byPhone.get(localPhone);
+      // Name/reason set at import time (Excel upload or single add) live on
+      // the target's own botMetadata, since those targets go straight to
+      // LiveHub's Campaign Dialer and never touch voiceOutboundAttempts;
+      // the attempts-table join only catches calls placed through our own
+      // queue (call-now/upload-contacts), so it's just a fallback here.
+      let targetMeta: { name?: string; reason?: string } = {};
+      try {
+        targetMeta = t.setting.botMetadata ? JSON.parse(t.setting.botMetadata) : {};
+      } catch {
+        targetMeta = {};
+      }
       return {
         targetId: t.targetID,
         phone: t.setting.targetNumber,
-        name: contact?.name ?? null,
-        reason: contact?.reason ?? null,
+        name: targetMeta.name || contact?.name || null,
+        reason: targetMeta.reason || contact?.reason || null,
         status: t.status.status,
         lastFailureReason: t.status.lastFailureReason,
         lastCallTime: t.status.lastCallTime,
@@ -501,22 +521,84 @@ export class OutreachService {
    */
   async getAiContext(tenantId: string, campaignId: string) {
     const [row] = await this.db
-      .select({ aiContext: voiceCampaignReports.aiContext })
+      .select({
+        aiContext: voiceCampaignReports.aiContext,
+        toolNames: voiceCampaignReports.toolNames,
+        documentIds: voiceCampaignReports.documentIds,
+      })
       .from(voiceCampaignReports)
       .where(and(eq(voiceCampaignReports.tenantId, tenantId), eq(voiceCampaignReports.liveHubCampaignId, campaignId)))
       .limit(1);
-    return { aiContext: row?.aiContext ?? null };
+
+    const [config] = await this.db
+      .select({ lastAppliedCampaignId: tenantAiAgentConfig.lastAppliedCampaignId })
+      .from(tenantAiAgentConfig)
+      .where(eq(tenantAiAgentConfig.tenantId, tenantId))
+      .limit(1);
+    const lastAppliedCampaignId = config?.lastAppliedCampaignId ?? null;
+    const isLive = lastAppliedCampaignId === null || lastAppliedCampaignId === campaignId;
+
+    let liveCampaignName: string | null = null;
+    if (!isLive && lastAppliedCampaignId) {
+      try {
+        const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+        const liveCampaign = await liveHub.getCampaign(lastAppliedCampaignId);
+        liveCampaignName = liveCampaign?.campaignName ?? lastAppliedCampaignId;
+      } catch {
+        liveCampaignName = lastAppliedCampaignId;
+      }
+    }
+
+    return {
+      aiContext: row?.aiContext ?? null,
+      toolNames: row?.toolNames ?? [],
+      documentIds: row?.documentIds ?? [],
+      isLive,
+      liveCampaignName,
+    };
   }
 
+  /** Saving this is the only step there is — no separate "deploy" action.
+   * Persists the campaign's own record, then immediately pushes the same
+   * prompt/tools/documents onto the tenant's one bound LiveHub agent, so
+   * the campaign you just set up is what the agent actually runs on its
+   * next call. Only one campaign's settings can be "live" on the shared
+   * agent at a time — saving a different campaign's AI settings overwrites
+   * it, same as before. */
   async setAiContext(tenantId: string, campaignId: string, dto: SetAiContextDto) {
+    const toolNames = dto.toolNames ?? [];
+    const documentIds = dto.documentIds ?? [];
     await this.db
       .insert(voiceCampaignReports)
-      .values({ tenantId, liveHubCampaignId: campaignId, aiContext: dto.aiContext })
+      .values({ tenantId, liveHubCampaignId: campaignId, aiContext: dto.aiContext, toolNames, documentIds })
       .onConflictDoUpdate({
         target: voiceCampaignReports.liveHubCampaignId,
-        set: { aiContext: dto.aiContext, updatedAt: new Date() },
+        set: { aiContext: dto.aiContext, toolNames, documentIds, updatedAt: new Date() },
       });
-    return { aiContext: dto.aiContext };
+
+    // Only push to the live agent when there's real prompt content — an
+    // empty save (e.g. a campaign that isn't using this feature) must never
+    // blank out whatever the agent is actually running.
+    if (dto.aiContext.trim()) {
+      const [config] = await this.db
+        .select({ agentId: tenantAiAgentConfig.agentId })
+        .from(tenantAiAgentConfig)
+        .where(eq(tenantAiAgentConfig.tenantId, tenantId))
+        .limit(1);
+      if (config?.agentId) {
+        const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+        const agentId = config.agentId;
+        await liveHub.updateAgentPrompt(agentId, dto.aiContext);
+        await liveHub.updateAgentTools(agentId, toolNames);
+        await liveHub.updateAgentDocuments(agentId, documentIds);
+        await this.db
+          .update(tenantAiAgentConfig)
+          .set({ lastAppliedCampaignId: campaignId })
+          .where(eq(tenantAiAgentConfig.tenantId, tenantId));
+      }
+    }
+
+    return { aiContext: dto.aiContext, toolNames, documentIds };
   }
 
   async uploadBatch(
@@ -660,4 +742,5 @@ export class OutreachService {
     const dial = await this.dial.startOutbound(tenantId, enqueued.attempt.id);
     return { ...enqueued, dial };
   }
+
 }

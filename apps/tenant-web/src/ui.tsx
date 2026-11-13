@@ -1,6 +1,7 @@
 import {
   forwardRef,
   useEffect,
+  useRef,
   useState,
   type ButtonHTMLAttributes,
   type FormEvent,
@@ -9,6 +10,7 @@ import {
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from 'react';
+import { ChevronDown, X } from 'lucide-react';
 
 export function phonesToText(phones: string[]) {
   return phones.join(', ');
@@ -51,18 +53,127 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   },
 );
 
+/** The browser's own dropdown arrow ignores border-radius and clips across
+ * a rounded-full corner, so it's suppressed (appearance-none) in favor of a
+ * custom chevron with padding that actually clears the curve. */
 export function Select(props: SelectHTMLAttributes<HTMLSelectElement>) {
   return (
-    <select {...props} className={`${fieldClass} ${props.className ?? ''}`} />
+    <span className="relative block">
+      <select
+        {...props}
+        className={`${fieldClass} appearance-none pr-10 ${props.className ?? ''}`}
+      />
+      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+    </span>
   );
 }
 
 const textareaClass =
-  'w-full rounded-xl border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring';
+  'w-full resize-none rounded-xl border border-input bg-background px-4 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring';
 
 export function Textarea(props: TextareaHTMLAttributes<HTMLTextAreaElement>) {
   return (
     <textarea {...props} className={`${textareaClass} ${props.className ?? ''}`} />
+  );
+}
+
+export interface MultiSelectOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+/** Closed state shows selected items as removable chips (or a placeholder);
+ * clicking opens a checklist panel below, closed by an outside click. */
+export function MultiSelectDropdown({
+  options,
+  selected,
+  onChange,
+  placeholder = 'Select…',
+}: {
+  options: MultiSelectOption[];
+  selected: string[];
+  onChange: (next: string[]) => void;
+  placeholder?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    function onMouseDown(e: MouseEvent) {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [open]);
+
+  function toggle(value: string) {
+    onChange(selected.includes(value) ? selected.filter((v) => v !== value) : [...selected, value]);
+  }
+  function remove(value: string) {
+    onChange(selected.filter((v) => v !== value));
+  }
+
+  const selectedOptions = options.filter((o) => selected.includes(o.value));
+
+  return (
+    <div ref={containerRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        className="flex min-h-[2.75rem] w-full cursor-pointer flex-wrap items-center gap-1.5 rounded-xl border border-input bg-background px-3 py-2 text-left text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+      >
+        {selectedOptions.length === 0 ? (
+          <span className="text-muted-foreground">{placeholder}</span>
+        ) : (
+          selectedOptions.map((o) => (
+            <span
+              key={o.value}
+              className="flex items-center gap-1 rounded-full bg-secondary px-2.5 py-1 text-xs font-medium text-foreground"
+            >
+              {o.label}
+              <X
+                className="size-3 cursor-pointer text-muted-foreground hover:text-foreground"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  remove(o.value);
+                }}
+              />
+            </span>
+          ))
+        )}
+        <ChevronDown className="ml-auto size-4 shrink-0 text-muted-foreground" />
+      </button>
+      {open && (
+        <div className="absolute z-20 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-border bg-background p-1.5 shadow-lg">
+          {options.length === 0 && (
+            <p className="px-2 py-1.5 text-sm text-muted-foreground">No options available.</p>
+          )}
+          {options.map((o) => (
+            <label
+              key={o.value}
+              className="flex cursor-pointer items-start gap-2 rounded-lg px-2 py-1.5 text-sm hover:bg-secondary"
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(o.value)}
+                onChange={() => toggle(o.value)}
+                className="mt-0.5 size-4 cursor-pointer accent-primary"
+              />
+              <span>
+                <span className="font-medium text-foreground">{o.label}</span>
+                {o.description && (
+                  <span className="block text-xs text-muted-foreground">{o.description}</span>
+                )}
+              </span>
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -225,11 +336,11 @@ export function Table({
 }
 
 const STAT_COLOR_CLASSES = {
-  blue: 'border-teal-100 bg-teal-50',
-  green: 'border-green-100 bg-green-50',
-  amber: 'border-amber-100 bg-amber-50',
-  red: 'border-red-100 bg-red-50',
-  gray: 'border-border bg-secondary',
+  blue: { card: 'border-[#2f5fe0] bg-[#2f5fe0]', label: 'text-white/70', value: 'text-white' },
+  green: { card: 'border-[#17874a] bg-[#17874a]', label: 'text-white/70', value: 'text-white' },
+  amber: { card: 'border-[#b4650f] bg-[#b4650f]', label: 'text-white/75', value: 'text-white' },
+  red: { card: 'border-[#c23327] bg-[#c23327]', label: 'text-white/75', value: 'text-white' },
+  gray: { card: 'border-border bg-card', label: 'text-muted-foreground', value: 'text-foreground' },
 } as const;
 
 export function StatCard({
@@ -241,10 +352,11 @@ export function StatCard({
   value: string | number;
   color?: keyof typeof STAT_COLOR_CLASSES;
 }) {
+  const cls = STAT_COLOR_CLASSES[color];
   return (
-    <div className={`rounded-xl border p-5 ${STAT_COLOR_CLASSES[color]}`}>
-      <p className="mb-1.5 text-xs font-medium text-muted-foreground">{label}</p>
-      <div className="tabular-nums text-2xl font-bold text-foreground">{value}</div>
+    <div className={`rounded-xl border p-5 ${cls.card}`}>
+      <p className={`mb-1.5 text-xs font-medium ${cls.label}`}>{label}</p>
+      <div className={`tabular-nums text-2xl font-bold ${cls.value}`}>{value}</div>
     </div>
   );
 }

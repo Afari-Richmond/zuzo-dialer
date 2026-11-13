@@ -3,7 +3,7 @@ import { Building2, LogOut, ShieldCheck } from 'lucide-react';
 import { ApiError, auth } from './api';
 import { TenantsPage } from './pages/TenantsPage';
 import { PlatformAdminsPage } from './pages/PlatformAdminsPage';
-import { navigate } from './nav';
+import { appPath, BASE_URL, navigate } from './nav';
 import { Btn, ErrorBanner, Field, Input } from './ui';
 
 const NAV = [
@@ -14,7 +14,9 @@ const NAV = [
 type PageId = (typeof NAV)[number]['id'];
 
 function routeFromPath(): PageId {
-  const raw = window.location.pathname.replace(/^\/super-admin\/?/, '') || 'tenants';
+  const { pathname } = window.location;
+  const stripped = pathname.startsWith(BASE_URL) ? pathname.slice(BASE_URL.length) : pathname;
+  const raw = stripped.replace(/^\/+/, '') || 'tenants';
   return (NAV.find((n) => n.id === raw)?.id ?? 'tenants') as PageId;
 }
 
@@ -36,7 +38,7 @@ export function App() {
   }, []);
 
   function go(id: PageId) {
-    navigate(`/super-admin/${id}`);
+    navigate(appPath(id));
     setPage(id);
   }
 

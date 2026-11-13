@@ -8,5 +8,6 @@ import { TelephonyCredentialsService } from './telephony-credentials.service';
   imports: [AuthModule, VoiceModule],
   controllers: [TelephonyCredentialsController],
   providers: [TelephonyCredentialsService],
+  exports: [TelephonyCredentialsService],
 })
 export class TelephonyCredentialsModule {}

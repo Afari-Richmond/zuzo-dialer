@@ -1,5 +1,7 @@
 import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { PlatformAuthGuard } from '../../auth/guards/platform-auth.guard';
+import { TelephonyCredentialsService } from '../../tenant/telephony-credentials/telephony-credentials.service';
+import { UpsertTelephonyCredentialDto } from '../../tenant/telephony-credentials/dto/telephony-credential.dto';
 import { TenantsService } from './tenants.service';
 import {
   CreateTenantDto,
@@ -11,7 +13,10 @@ import {
 @Controller('platform/tenants')
 @UseGuards(PlatformAuthGuard)
 export class TenantsController {
-  constructor(private readonly tenants: TenantsService) {}
+  constructor(
+    private readonly tenants: TenantsService,
+    private readonly telephonyCredentials: TelephonyCredentialsService,
+  ) {}
 
   @Get()
   list(@Query() query: ListTenantsQueryDto) {
@@ -56,5 +61,30 @@ export class TenantsController {
   @Delete(':id')
   remove(@Param('id', ParseUUIDPipe) id: string) {
     return this.tenants.remove(id);
+  }
+
+  /**
+   * Platform-only — this is how the AI voice engine's own credentials get
+   * wired up for a tenant. Deliberately not exposed anywhere in tenant-web:
+   * a tenant has no legitimate reason to see or hold these, and giving them
+   * the raw clientId/clientSecret would be the one place our white-labeling
+   * could leak back to the underlying platform.
+   */
+  @Get(':id/telephony-credentials')
+  listTelephonyCredentials(@Param('id', ParseUUIDPipe) id: string) {
+    return this.telephonyCredentials.list(id).then((credentials) => ({ credentials }));
+  }
+
+  @Put(':id/telephony-credentials')
+  upsertTelephonyCredentials(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpsertTelephonyCredentialDto) {
+    return this.telephonyCredentials.upsert(id, dto).then((credential) => ({ credential }));
+  }
+
+  @Delete(':id/telephony-credentials/:credentialId')
+  deactivateTelephonyCredential(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('credentialId', ParseUUIDPipe) credentialId: string,
+  ) {
+    return this.telephonyCredentials.deactivate(id, credentialId);
   }
 }

@@ -44,6 +44,11 @@ export class AddTargetDto {
   @IsString()
   @MaxLength(500)
   reason?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  name?: string;
 }
 
 export class OutreachAttemptsQueryDto {
@@ -267,6 +272,14 @@ export class SetRecommendationDto {
 
 export class SetAiContextDto {
   @IsString()
-  @MaxLength(4000)
+  @MaxLength(20000)
   aiContext!: string;
+
+  @IsOptional()
+  @IsArray()
+  toolNames?: string[];
+
+  @IsOptional()
+  @IsArray()
+  documentIds?: string[];
 }

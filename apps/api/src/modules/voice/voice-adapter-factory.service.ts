@@ -55,7 +55,7 @@ export class VoiceAdapterFactoryService {
     const cached = this.cache.get(tenantId);
     if (cached) return cached;
 
-    const [row] = await this.db
+    const activeRows = await this.db
       .select()
       .from(tenantTelephonyCredentials)
       .where(
@@ -63,8 +63,12 @@ export class VoiceAdapterFactoryService {
           eq(tenantTelephonyCredentials.tenantId, tenantId),
           eq(tenantTelephonyCredentials.isActive, true),
         ),
-      )
-      .limit(1);
+      );
+    // Each provider has its own independent "active" row, so more than one
+    // can be active for a tenant at once — always prefer livehub, since
+    // that's the real voice engine every campaign actually runs on; an
+    // active stub/twilio/africastalking row must never silently pre-empt it.
+    const row = activeRows.find((r) => r.provider === 'livehub') ?? activeRows[0];
 
     if (!row) {
       const adapter = new StubAdapter();

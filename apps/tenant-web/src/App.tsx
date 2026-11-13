@@ -7,7 +7,6 @@ import {
   Palette,
   PhoneOff,
   Radio,
-  Settings,
   UploadCloud,
   Users,
 } from 'lucide-react';
@@ -21,35 +20,13 @@ import {
 } from './pages';
 import { DashboardPage } from './dashboard-page';
 import { AnalyticsPage } from './analytics-page';
-import { TeamPage, TelephonySettingsPage } from './extra-pages';
+import { TeamPage } from './extra-pages';
 import { AcceptInvitePage, ForgotPasswordPage, ResetPasswordPage } from './auth-pages';
 import { SettingsPage } from './settings-pages';
 import { brandingApi } from './api';
-import { navigate } from './nav';
+import { appPath, BASE_URL, navigate } from './nav';
 import { Btn, ErrorBanner, Field, Input } from './ui';
-
-/** Lightens a hex color toward white by `amount` (0-1) — used to derive the
- * sidebar's "active nav text" glow shade from one brand color. */
-function lighten(hex: string, amount: number): string {
-  const n = parseInt(hex.slice(1), 16);
-  const r = Math.min(255, Math.round(((n >> 16) & 255) + (255 - ((n >> 16) & 255)) * amount));
-  const g = Math.min(255, Math.round(((n >> 8) & 255) + (255 - ((n >> 8) & 255)) * amount));
-  const b = Math.min(255, Math.round((n & 255) + (255 - (n & 255)) * amount));
-  return `#${[r, g, b].map((c) => c.toString(16).padStart(2, '0')).join('')}`;
-}
-
-function applyBrandColor(hex: string | null) {
-  const root = document.documentElement;
-  if (!hex) {
-    root.style.removeProperty('--primary');
-    root.style.removeProperty('--primary-glow');
-    root.style.removeProperty('--ring');
-    return;
-  }
-  root.style.setProperty('--primary', hex);
-  root.style.setProperty('--primary-glow', lighten(hex, 0.35));
-  root.style.setProperty('--ring', hex);
-}
+import { applyBranding } from './apply-branding';
 
 const NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -58,7 +35,6 @@ const NAV = [
   { id: 'attempts', label: 'Call attempts', icon: Radio },
   { id: 'dnc', label: 'Do-not-call', icon: PhoneOff },
   { id: 'analytics', label: 'Analytics', icon: BarChart3 },
-  { id: 'settings', label: 'Telephony', icon: Settings },
   { id: 'team', label: 'Team', icon: Users },
   { id: 'account', label: 'Settings', icon: Palette },
 ] as const;
@@ -67,7 +43,9 @@ type PageId = (typeof NAV)[number]['id'];
 type Route = { page: PageId } | { page: 'campaign-report'; campaignId: string };
 
 function routeFromPath(): Route {
-  const raw = window.location.pathname.replace(/^\/outreach\/?/, '') || 'dashboard';
+  const { pathname } = window.location;
+  const stripped = pathname.startsWith(BASE_URL) ? pathname.slice(BASE_URL.length) : pathname;
+  const raw = stripped.replace(/^\/+/, '') || 'dashboard';
   const reportMatch = raw.match(/^campaigns\/([^/]+)\/report$/);
   if (reportMatch) return { page: 'campaign-report', campaignId: reportMatch[1] };
   return { page: (NAV.find((n) => n.id === raw)?.id ?? 'dashboard') as PageId };
@@ -92,7 +70,7 @@ export function App() {
     brandingApi
       .get()
       .then((branding) => {
-        applyBrandColor(branding.primaryColor);
+        applyBranding(branding);
         setLogoUrl(branding.logoUrl);
         setTenantName(branding.name);
       })
@@ -109,7 +87,7 @@ export function App() {
   }, []);
 
   function go(id: PageId) {
-    navigate(`/outreach/${id}`);
+    navigate(appPath(id));
     setRoute({ page: id });
   }
 
@@ -180,8 +158,8 @@ export function App() {
                   onClick={() => go(n.id)}
                   className={`flex cursor-pointer items-center justify-center gap-3 rounded-xl px-0 py-2.5 text-left text-sm font-medium transition-colors xl:justify-start xl:px-3 ${
                     navId === n.id
-                      ? 'bg-sidebar-active text-primary-glow'
-                      : 'text-sidebar-muted hover:bg-white/5 hover:text-sidebar-foreground'
+                      ? 'bg-primary text-primary-foreground shadow-[0_4px_14px_var(--primary-shadow)]'
+                      : 'text-sidebar-muted hover:bg-[var(--sidebar-hover)] hover:text-sidebar-foreground'
                   }`}
                 >
                   <n.icon className="size-[18px] shrink-0" />
@@ -195,7 +173,7 @@ export function App() {
                 type="button"
                 title="Sign out"
                 onClick={() => api.logout().then(() => setAuthed(false))}
-                className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl px-0 py-2.5 text-left text-sm font-medium text-sidebar-muted transition-colors hover:bg-white/5 hover:text-sidebar-foreground xl:justify-start xl:px-3"
+                className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl px-0 py-2.5 text-left text-sm font-medium text-sidebar-muted transition-colors hover:bg-[var(--sidebar-hover)] hover:text-sidebar-foreground xl:justify-start xl:px-3"
               >
                 <LogOut className="size-[18px] shrink-0" />
                 <span className="hidden xl:inline">Sign out</span>
@@ -223,8 +201,6 @@ export function App() {
               <DoNotCallPage />
             ) : route.page === 'analytics' ? (
               <AnalyticsPage />
-            ) : route.page === 'settings' ? (
-              <TelephonySettingsPage />
             ) : route.page === 'team' ? (
               <TeamPage />
             ) : route.page === 'account' ? (
@@ -303,7 +279,7 @@ function Login({ onOk }: { onOk: () => void }) {
         </Btn>
         <button
           type="button"
-          onClick={() => navigate('/outreach/forgot-password')}
+          onClick={() => navigate(appPath('forgot-password'))}
           className="mt-3 w-full text-center text-sm text-muted-foreground hover:text-foreground"
         >
           Forgot password?

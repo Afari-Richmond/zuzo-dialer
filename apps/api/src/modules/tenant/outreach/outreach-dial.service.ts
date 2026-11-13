@@ -287,7 +287,7 @@ export class OutreachDialService {
       })
       .returning();
 
-    return { dialed: true, callId, providerCallId: dialed.callId, attempt, reason };
+    return { dialed: true, callId, providerCallId: dialed.callId, conversationId: dialed.conversationId, attempt, reason };
   }
 
   listOutboundAttempts(tenantId: string, filter: { campaign?: string; status?: string } = {}) {
