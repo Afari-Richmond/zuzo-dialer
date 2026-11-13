@@ -58,12 +58,20 @@ function Nav() {
               FAQ
             </a>
           </nav>
-          <a
-            href="#cta"
-            className="rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-paper transition hover:bg-accent"
-          >
-            Book a demo
-          </a>
+          <div className="flex items-center gap-4">
+            <a
+              href="https://zuzo-dialer.vercel.app"
+              className="hidden text-sm font-semibold text-ink/70 transition hover:text-ink sm:inline"
+            >
+              Sign in
+            </a>
+            <a
+              href="#cta"
+              className="rounded-full bg-ink px-5 py-2.5 text-sm font-semibold text-paper transition hover:bg-accent"
+            >
+              Book a demo
+            </a>
+          </div>
         </div>
       </header>
     </>
