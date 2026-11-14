@@ -144,7 +144,7 @@ export function App() {
                   {tenantName ?? ' '}
                 </div>
                 <div className="truncate text-sm font-semibold text-sidebar-foreground">
-                  Outreach
+                  ZuZo Vox
                 </div>
               </div>
             </div>
@@ -244,13 +244,13 @@ function Login({ onOk }: { onOk: () => void }) {
       >
         <div className="mb-6 flex items-center gap-3">
           <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
-            O
+            Z
           </div>
-          <div className="text-sm font-semibold text-foreground">Outreach</div>
+          <div className="text-sm font-semibold text-foreground">ZuZo Vox</div>
         </div>
         <h1 className="mb-1 font-heading text-xl font-bold text-foreground">Sign in</h1>
         <p className="mb-5 text-sm text-muted-foreground">
-          Sign in to your tenant's outreach dashboard.
+          Give every conversation a voice.
         </p>
         <ErrorBanner error={error} />
         <div className={`grid gap-4 ${error ? 'mt-3' : ''}`}>

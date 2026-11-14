@@ -42,7 +42,7 @@ function Nav() {
             <span className="flex h-8 w-8 items-center justify-center rounded-full bg-ink text-sm font-bold text-paper">
               Z
             </span>
-            ZuZo Dialer
+            ZuZo Vox
           </a>
           <nav className="hidden items-center gap-8 text-sm font-medium text-ink/70 md:flex">
             <a href="#capabilities" className="transition hover:text-ink">
@@ -112,16 +112,16 @@ function Hero() {
     <section id="top" className="relative overflow-hidden px-6 pb-20 pt-16 md:pt-24">
       <div className="mx-auto max-w-4xl text-center">
         <motion.div {...fadeUp}>
-          <Eyebrow>AI Voice Outreach</Eyebrow>
+          <Eyebrow>Voice AI Platform</Eyebrow>
         </motion.div>
         <motion.h1
           {...fadeUp}
           transition={{ ...fadeUp.transition, delay: 0.08 }}
           className="mt-6 text-balance font-display text-5xl font-bold leading-[1.05] tracking-tight text-ink sm:text-6xl md:text-7xl"
         >
-          Voice agents that actually{' '}
+          Give every{' '}
           <span className="relative inline-block">
-            close the call
+            conversation
             <svg
               viewBox="0 0 300 20"
               className="absolute -bottom-2 left-0 w-full text-accent"
@@ -129,14 +129,15 @@ function Hero() {
             >
               <path d="M2 14C60 4 240 4 298 14" stroke="currentColor" strokeWidth="5" fill="none" strokeLinecap="round" />
             </svg>
-          </span>
+          </span>{' '}
+          a voice
         </motion.h1>
         <motion.p
           {...fadeUp}
           transition={{ ...fadeUp.transition, delay: 0.16 }}
           className="mx-auto mt-7 max-w-2xl text-lg leading-relaxed text-muted"
         >
-          ZuZo Dialer launches, runs, and reports on outbound voice campaigns end to end, with real-time
+          ZuZo Vox launches, runs, and reports on outbound voice campaigns end to end, with real-time
           transcripts, live analytics, and agents that sound like your best rep, not a robot.
         </motion.p>
         <motion.div
@@ -791,7 +792,7 @@ function Footer() {
           <a href="mailto:info@zuzogp.com" className="mt-2 block font-display text-2xl font-bold text-ink hover:text-accent">
             info@zuzogp.com
           </a>
-          <p className="mt-4 text-xs text-muted">&copy; 2026 ZuZo Dialer. All rights reserved.</p>
+          <p className="mt-4 text-xs text-muted">&copy; 2026 ZuZo Vox. All rights reserved.</p>
         </div>
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide text-muted">Product</p>
@@ -831,7 +832,7 @@ function Footer() {
       </div>
       <div className="overflow-hidden py-8 text-center">
         <p className="select-none font-display text-[13vw] font-bold leading-none tracking-tight text-transparent [-webkit-text-stroke:1.5px_var(--line)] sm:text-[9vw]">
-          ZuZo Dialer
+          ZuZo Vox
         </p>
       </div>
     </footer>

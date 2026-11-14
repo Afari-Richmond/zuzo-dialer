@@ -21,7 +21,7 @@ function AuthShell({
           </div>
           <div>
             <div className="text-xs font-medium uppercase tracking-wide text-primary">ZUZO INSURE</div>
-            <div className="text-sm font-semibold text-foreground">Outreach</div>
+            <div className="text-sm font-semibold text-foreground">ZuZo Vox</div>
           </div>
         </div>
         <h1 className="mb-1 font-heading text-xl font-bold text-foreground">{title}</h1>
