@@ -62,7 +62,13 @@ export function App() {
     api
       .me()
       .then(() => setAuthed(true))
-      .catch(() => setAuthed(false));
+      .catch(() => {
+        setAuthed(false);
+        if (!window.location.pathname.endsWith('/auth')) {
+          navigate(appPath('auth'));
+          setPath(window.location.pathname);
+        }
+      });
   }, []);
 
   useEffect(() => {
@@ -85,13 +91,6 @@ export function App() {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, []);
-
-  useEffect(() => {
-    if (authed === false && !path.endsWith('/auth')) {
-      navigate(appPath('auth'));
-      setPath(window.location.pathname);
-    }
-  }, [authed, path]);
 
   function go(id: PageId) {
     navigate(appPath(id));
@@ -179,7 +178,13 @@ export function App() {
               <button
                 type="button"
                 title="Sign out"
-                onClick={() => api.logout().then(() => setAuthed(false))}
+                onClick={() =>
+                  api.logout().then(() => {
+                    setAuthed(false);
+                    navigate(appPath('auth'));
+                    setPath(window.location.pathname);
+                  })
+                }
                 className="flex w-full cursor-pointer items-center justify-center gap-3 rounded-xl px-0 py-2.5 text-left text-sm font-medium text-sidebar-muted transition-colors hover:bg-[var(--sidebar-hover)] hover:text-sidebar-foreground xl:justify-start xl:px-3"
               >
                 <LogOut className="size-[18px] shrink-0" />
