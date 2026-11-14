@@ -86,6 +86,13 @@ export function App() {
     return () => window.removeEventListener('popstate', onPop);
   }, []);
 
+  useEffect(() => {
+    if (authed === false && !path.endsWith('/auth')) {
+      navigate(appPath('auth'));
+      setPath(window.location.pathname);
+    }
+  }, [authed, path]);
+
   function go(id: PageId) {
     navigate(appPath(id));
     setRoute({ page: id });
