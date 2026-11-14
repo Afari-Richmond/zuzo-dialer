@@ -71,7 +71,7 @@ export class TeamService {
 
     const token = await this.tokens.issueInvite(user.id);
     const baseUrl = this.config.get<string>('TENANT_WEB_URL') || 'http://localhost:5174';
-    const acceptUrl = `${baseUrl}/outreach/accept-invite?token=${token}`;
+    const acceptUrl = `${baseUrl}/accept-invite?token=${token}`;
     await this.email.sendInvite(user.email, tenant?.name ?? 'your team', acceptUrl);
 
     return { user };

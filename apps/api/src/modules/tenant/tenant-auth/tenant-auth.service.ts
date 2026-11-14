@@ -82,7 +82,7 @@ export class TenantAuthService {
     if (!user) return;
 
     const token = await this.tokens.issuePasswordReset(user.id);
-    const resetUrl = `${this.webUrl()}/outreach/reset-password?token=${token}`;
+    const resetUrl = `${this.webUrl()}/reset-password?token=${token}`;
     await this.email.sendPasswordReset(email.toLowerCase(), resetUrl);
   }
 

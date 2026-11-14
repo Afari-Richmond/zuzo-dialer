@@ -60,7 +60,7 @@ function Nav() {
           </nav>
           <div className="flex items-center gap-4">
             <a
-              href="https://zuzo-dialer.vercel.app"
+              href="/auth"
               className="hidden text-sm font-semibold text-ink/70 transition hover:text-ink sm:inline"
             >
               Sign in

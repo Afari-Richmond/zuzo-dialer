@@ -1,0 +1,18 @@
+{
+  "rewrites": [
+    { "source": "/vox-assets/:path*", "destination": "https://zuzo-dialer.vercel.app/vox-assets/:path*" },
+    { "source": "/auth", "destination": "https://zuzo-dialer.vercel.app/auth" },
+    { "source": "/dashboard", "destination": "https://zuzo-dialer.vercel.app/dashboard" },
+    { "source": "/upload", "destination": "https://zuzo-dialer.vercel.app/upload" },
+    { "source": "/campaigns", "destination": "https://zuzo-dialer.vercel.app/campaigns" },
+    { "source": "/campaigns/:path*", "destination": "https://zuzo-dialer.vercel.app/campaigns/:path*" },
+    { "source": "/attempts", "destination": "https://zuzo-dialer.vercel.app/attempts" },
+    { "source": "/dnc", "destination": "https://zuzo-dialer.vercel.app/dnc" },
+    { "source": "/analytics", "destination": "https://zuzo-dialer.vercel.app/analytics" },
+    { "source": "/team", "destination": "https://zuzo-dialer.vercel.app/team" },
+    { "source": "/account", "destination": "https://zuzo-dialer.vercel.app/account" },
+    { "source": "/accept-invite", "destination": "https://zuzo-dialer.vercel.app/accept-invite" },
+    { "source": "/forgot-password", "destination": "https://zuzo-dialer.vercel.app/forgot-password" },
+    { "source": "/reset-password", "destination": "https://zuzo-dialer.vercel.app/reset-password" }
+  ]
+}
