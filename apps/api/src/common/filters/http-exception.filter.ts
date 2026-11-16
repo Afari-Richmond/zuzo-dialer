@@ -30,12 +30,16 @@ export class ApiExceptionFilter implements ExceptionFilter {
           code = 'VALIDATION_ERROR';
         }
       }
-    } else if (exception instanceof Error) {
-      message = exception.message;
     }
+    // A plain Error (not an HttpException we deliberately authored via
+    // badRequest/notFound/etc.) falls through with the generic defaults
+    // above — its real message is only logged server-side below, never
+    // sent to the client, since it may contain upstream provider details
+    // (status codes, response bodies, vendor names) never meant to be seen.
 
     if (status >= 500) {
-      this.logger.error(`${request.method} ${request.url} -> ${status} ${code}: ${message}`);
+      const detail = exception instanceof Error ? exception.message : message;
+      this.logger.error(`${request.method} ${request.url} -> ${status} ${code}: ${detail}`);
     } else {
       this.logger.warn(`${request.method} ${request.url} -> ${status} ${code}: ${message}`);
     }
