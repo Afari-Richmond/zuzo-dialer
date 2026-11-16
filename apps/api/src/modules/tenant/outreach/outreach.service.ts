@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import * as XLSX from 'xlsx';
 import { DRIZZLE } from '../../../db/database.module';
@@ -47,6 +47,8 @@ function findKey(row: Record<string, unknown>, candidates: string[]): string | u
  */
 @Injectable()
 export class OutreachService {
+  private readonly logger = new Logger(OutreachService.name);
+
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly dial: OutreachDialService,
@@ -170,7 +172,8 @@ export class OutreachService {
         },
       ]);
     } catch (err) {
-      throw badRequest('LIVEHUB_REJECTED', (err as Error).message);
+      this.logger.warn(`addTarget rejected by voice provider: ${(err as Error).message}`);
+      throw badRequest('TARGET_REJECTED', 'The voice AI provider rejected this contact');
     }
     if (!result || result.result !== 'Success') {
       throw badRequest('TARGET_REJECTED', `Target was rejected: ${result?.result ?? 'unknown error'}`);
@@ -245,7 +248,8 @@ export class OutreachService {
           toAdd.map((t) => ({ targetNumber: t.targetNumber, botMetadata: t.botMetadata })),
         );
       } catch (err) {
-        throw badRequest('LIVEHUB_REJECTED', (err as Error).message);
+        this.logger.warn(`importTargets rejected by voice provider: ${(err as Error).message}`);
+        throw badRequest('TARGETS_REJECTED', 'The voice AI provider rejected these contacts');
       }
       toAdd.forEach((t, i) => {
         const lhResult = liveHubResults[i];

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { eq } from 'drizzle-orm';
 import { DRIZZLE } from '../../../db/database.module';
 import type { Database } from '../../../db/client';
@@ -38,6 +38,8 @@ const DEFAULT_TRANSFER_PATTERNS = [
  */
 @Injectable()
 export class AiAgentService {
+  private readonly logger = new Logger(AiAgentService.name);
+
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly adapterFactory: VoiceAdapterFactoryService,
@@ -48,13 +50,14 @@ export class AiAgentService {
       return await action();
     } catch (err) {
       const message = (err as Error).message;
+      this.logger.warn(`AI agent action failed: ${message}`);
       if (/\((401|403)\)/.test(message)) {
         throw badRequest(
           'AI_AGENTS_NOT_AUTHORIZED',
-          "Your AudioCodes API client isn't authorized for AI Agents. Grant it the AI Agents role under Access control (IAM) in the LiveHub dashboard, then try again.",
+          "Your voice AI provider account isn't authorized for AI Agents. Contact support to grant access, then try again.",
         );
       }
-      throw serviceUnavailable('LIVEHUB_AI_AGENTS_ERROR', message);
+      throw serviceUnavailable('AI_AGENTS_ERROR', 'The AI agent provider is temporarily unavailable');
     }
   }
 

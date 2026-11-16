@@ -44,8 +44,8 @@ export class VoiceAdapterFactoryService {
     const adapter = await this.getAdapterForTenant(tenantId);
     if (!(adapter instanceof LiveHubAdapter)) {
       throw badRequest(
-        'LIVEHUB_NOT_CONFIGURED',
-        'Campaign management requires this tenant\'s active telephony credential to be LiveHub',
+        'VOICE_PROVIDER_NOT_CONFIGURED',
+        'Campaign management requires an active voice AI provider to be configured for this tenant',
       );
     }
     return adapter;

@@ -1,5 +1,5 @@
 import { randomUUID } from 'crypto';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { DRIZZLE } from '../../../db/database.module';
@@ -28,6 +28,8 @@ const OUTBOUND_CONCURRENCY = 5;
  */
 @Injectable()
 export class OutreachDialService {
+  private readonly logger = new Logger(OutreachDialService.name);
+
   constructor(
     @Inject(DRIZZLE) private readonly db: Database,
     private readonly adapterFactory: VoiceAdapterFactoryService,
@@ -199,11 +201,12 @@ export class OutreachDialService {
         },
       });
     } catch (err) {
+      this.logger.warn(`Outbound call start failed for attempt ${attemptId}: ${(err as Error).message}`);
       await this.db
         .update(voiceOutboundAttempts)
-        .set({ status: 'failed', lastError: (err as Error).message.slice(0, 500) })
+        .set({ status: 'failed', lastError: 'The call could not be placed' })
         .where(eq(voiceOutboundAttempts.id, attemptId));
-      return { dialed: false, reason: 'provider_error', error: (err as Error).message };
+      return { dialed: false, reason: 'provider_error', error: 'The call could not be placed' };
     }
 
     await this.db.insert(voiceCalls).values({
@@ -259,7 +262,8 @@ export class OutreachDialService {
         voicemailEndTimeoutSec: 15,
       });
     } catch (err) {
-      return { dialed: false, reason: 'provider_error', error: (err as Error).message };
+      this.logger.warn(`Instant dialout failed for ${normalized}: ${(err as Error).message}`);
+      return { dialed: false, reason: 'provider_error', error: 'The call could not be placed' };
     }
 
     await this.db.insert(voiceCalls).values({
