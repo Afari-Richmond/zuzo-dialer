@@ -48,6 +48,11 @@ export class TenantsController {
     return this.tenants.updateAdminSettings(id, dto).then((adminSettings) => ({ adminSettings }));
   }
 
+  @Get(':id/usage')
+  getUsage(@Param('id', ParseUUIDPipe) id: string, @Query('from') from?: string, @Query('to') to?: string) {
+    return this.tenants.getUsageSummary(id, from, to).then((usage) => ({ usage }));
+  }
+
   @Post(':id/suspend')
   suspend(@Param('id', ParseUUIDPipe) id: string) {
     return this.tenants.setStatus(id, 'suspended').then((tenant) => ({ tenant }));

@@ -46,6 +46,11 @@ export class UpdateTenantAdminSettingsDto {
   ratePerMinuteCents?: number | null;
 
   @IsOptional()
+  @IsInt()
+  @Min(0)
+  monthlyBaseFeeCents?: number | null;
+
+  @IsOptional()
   @IsString()
   billingContactName?: string | null;
 

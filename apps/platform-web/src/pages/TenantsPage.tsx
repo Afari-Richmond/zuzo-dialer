@@ -5,6 +5,7 @@ import {
   tenants as tenantsApi,
   type Tenant,
   type TenantAdminSettings,
+  type TenantUsage,
   type TelephonyCredential,
 } from '../api';
 import { Btn, ErrorBanner, Field, Input, Select, StatCard, StatusBadge, Table, Textarea, useLoad } from '../ui';
@@ -148,6 +149,7 @@ function TenantRow({
           <td colSpan={7} className="px-5 py-5">
             <div className="flex flex-col gap-6">
               <TenantAdminPanel tenantId={tenant.id} onSaved={onChanged} />
+              <UsageBillingPanel tenantId={tenant.id} />
               <VoiceEngineCredentialsPanel tenantId={tenant.id} />
             </div>
           </td>
@@ -197,7 +199,7 @@ function TenantAdminPanel({ tenantId, onSaved }: { tenantId: string; onSaved: ()
 
   return (
     <form onSubmit={submit} className="flex flex-col gap-4">
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
         <Field label="Plan">
           <Select
             value={settings.plan}
@@ -219,7 +221,7 @@ function TenantAdminPanel({ tenantId, onSaved }: { tenantId: string; onSaved: ()
             onChange={(e) => set('monthlyMinuteQuota', e.target.value === '' ? null : Number(e.target.value))}
           />
         </Field>
-        <Field label="Rate billed to this tenant (USD / min)">
+        <Field label="Overage rate (USD / min)">
           <Input
             type="number"
             min={0}
@@ -228,6 +230,18 @@ function TenantAdminPanel({ tenantId, onSaved }: { tenantId: string; onSaved: ()
             value={settings.ratePerMinuteCents != null ? (settings.ratePerMinuteCents / 100).toFixed(2) : ''}
             onChange={(e) =>
               set('ratePerMinuteCents', e.target.value === '' ? null : Math.round(Number(e.target.value) * 100))
+            }
+          />
+        </Field>
+        <Field label="Monthly base fee (USD)">
+          <Input
+            type="number"
+            min={0}
+            step="0.01"
+            placeholder="e.g. 59.00"
+            value={settings.monthlyBaseFeeCents != null ? (settings.monthlyBaseFeeCents / 100).toFixed(2) : ''}
+            onChange={(e) =>
+              set('monthlyBaseFeeCents', e.target.value === '' ? null : Math.round(Number(e.target.value) * 100))
             }
           />
         </Field>
@@ -263,6 +277,76 @@ function TenantAdminPanel({ tenantId, onSaved }: { tenantId: string; onSaved: ()
         <ErrorBanner error={saveError} />
       </div>
     </form>
+  );
+}
+
+function formatUsd(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function firstOfMonth(): string {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+}
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/**
+ * The basis for a monthly invoice: real call minutes for this tenant over a
+ * date range (from voice_calls, excluding the 'stub' provider), combined
+ * with the plan/rate/base-fee set above to compute what they actually owe.
+ */
+function UsageBillingPanel({ tenantId }: { tenantId: string }) {
+  const [from, setFrom] = useState(firstOfMonth);
+  const [to, setTo] = useState(today);
+  const [usage, setUsage] = useState<TenantUsage | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function load() {
+    setLoading(true);
+    setError(null);
+    tenantsApi
+      .getUsage(tenantId, from, to)
+      .then(setUsage)
+      .catch((err: Error) => setError(err.message))
+      .finally(() => setLoading(false));
+  }
+
+  useEffect(load, [tenantId]);
+
+  return (
+    <div className="rounded-xl border border-border bg-card p-5">
+      <h4 className="mb-1 text-sm font-semibold text-foreground">Usage &amp; billing</h4>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Real call minutes for this tenant over the period below, billed against the plan set above.
+      </p>
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <Field label="From">
+          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </Field>
+        <Field label="To">
+          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        </Field>
+        <Btn kind="ghost" onClick={load} disabled={loading}>
+          {loading ? 'Loading…' : 'Refresh'}
+        </Btn>
+      </div>
+      <ErrorBanner error={error} />
+      {usage && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard label="Calls" value={usage.callCount} color="gray" />
+          <StatCard label="Minutes used" value={usage.totalMinutes} color="blue" />
+          <StatCard label="Included" value={usage.includedMinutes} color="gray" />
+          <StatCard label="Overage (min)" value={usage.overageMinutes} color="red" />
+          <StatCard label="Base fee" value={formatUsd(usage.baseFeeCents)} color="gray" />
+          <StatCard label="Overage cost" value={formatUsd(usage.overageCostCents)} color="red" />
+          <StatCard label="Total due" value={formatUsd(usage.totalDueCents)} color="green" />
+        </div>
+      )}
+    </div>
   );
 }
 

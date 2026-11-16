@@ -55,9 +55,23 @@ export type TenantAdminSettings = {
   plan: 'trial' | 'starter' | 'growth' | 'scale' | 'custom';
   monthlyMinuteQuota: number | null;
   ratePerMinuteCents: number | null;
+  monthlyBaseFeeCents: number | null;
   billingContactName: string | null;
   billingContactEmail: string | null;
   notes: string | null;
+};
+
+export type TenantUsage = {
+  from: string;
+  to: string;
+  callCount: number;
+  totalMinutes: number;
+  includedMinutes: number;
+  overageMinutes: number;
+  baseFeeCents: number;
+  ratePerMinuteCents: number;
+  overageCostCents: number;
+  totalDueCents: number;
 };
 
 export const tenants = {
@@ -93,6 +107,15 @@ export const tenants = {
     }).then((d) => d.credential),
   deactivateTelephonyCredential: (id: string, credentialId: string) =>
     request<{ ok: true }>(`/platform/tenants/${id}/telephony-credentials/${credentialId}`, { method: 'DELETE' }),
+  getUsage: (id: string, from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    return request<{ usage: TenantUsage }>(`/platform/tenants/${id}/usage${qs ? `?${qs}` : ''}`).then(
+      (d) => d.usage,
+    );
+  },
 };
 
 export type TelephonyCredential = {

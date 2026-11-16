@@ -1,10 +1,10 @@
 import { randomBytes } from 'crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import * as bcrypt from 'bcrypt';
-import { and, eq, ilike, or } from 'drizzle-orm';
+import { and, eq, gte, ilike, isNotNull, lte, ne, or, sql } from 'drizzle-orm';
 import { DRIZZLE } from '../../../db/database.module';
 import type { Database } from '../../../db/client';
-import { tenants, tenantUsers } from '../../../db/schema';
+import { tenants, tenantUsers, voiceCalls } from '../../../db/schema';
 import { conflict, notFound } from '../../../common/errors';
 import type {
   CreateTenantDto,
@@ -26,6 +26,7 @@ export interface TenantAdminSettings {
   plan: 'trial' | 'starter' | 'growth' | 'scale' | 'custom';
   monthlyMinuteQuota: number | null;
   ratePerMinuteCents: number | null;
+  monthlyBaseFeeCents: number | null;
   billingContactName: string | null;
   billingContactEmail: string | null;
   notes: string | null;
@@ -37,6 +38,7 @@ function readAdminSettings(settings: unknown): TenantAdminSettings {
     plan: admin.plan ?? 'trial',
     monthlyMinuteQuota: admin.monthlyMinuteQuota ?? null,
     ratePerMinuteCents: admin.ratePerMinuteCents ?? null,
+    monthlyBaseFeeCents: admin.monthlyBaseFeeCents ?? null,
     billingContactName: admin.billingContactName ?? null,
     billingContactEmail: admin.billingContactEmail ?? null,
     notes: admin.notes ?? null,
@@ -137,6 +139,8 @@ export class TenantsService {
       plan: dto.plan !== undefined ? dto.plan : current.plan,
       monthlyMinuteQuota: dto.monthlyMinuteQuota !== undefined ? dto.monthlyMinuteQuota : current.monthlyMinuteQuota,
       ratePerMinuteCents: dto.ratePerMinuteCents !== undefined ? dto.ratePerMinuteCents : current.ratePerMinuteCents,
+      monthlyBaseFeeCents:
+        dto.monthlyBaseFeeCents !== undefined ? dto.monthlyBaseFeeCents : current.monthlyBaseFeeCents,
       billingContactName: dto.billingContactName !== undefined ? dto.billingContactName : current.billingContactName,
       billingContactEmail: dto.billingContactEmail !== undefined ? dto.billingContactEmail : current.billingContactEmail,
       notes: dto.notes !== undefined ? dto.notes : current.notes,
@@ -149,6 +153,56 @@ export class TenantsService {
       .where(eq(tenants.id, id));
 
     return next;
+  }
+
+  /**
+   * Billable usage for one tenant over a date range — the basis for a monthly
+   * invoice. Minutes come from voice_calls' own started/ended timestamps
+   * (excludes the 'stub' provider, since that's local/dev testing with no
+   * real cost), rounded up per call the way telecom billing conventionally
+   * does, so a 61-second call bills as 2 minutes rather than 1.02.
+   */
+  async getUsageSummary(id: string, fromStr?: string, toStr?: string) {
+    const now = new Date();
+    const from = fromStr ? new Date(fromStr) : new Date(now.getFullYear(), now.getMonth(), 1);
+    const to = toStr ? new Date(`${toStr}T23:59:59.999Z`) : now;
+
+    const settings = await this.getAdminSettings(id);
+
+    const [row] = await this.db
+      .select({
+        callCount: sql<number>`count(*)::int`,
+        totalMinutes: sql<number>`coalesce(sum(ceil(extract(epoch from (${voiceCalls.endedAt} - ${voiceCalls.startedAt})) / 60)), 0)::int`,
+      })
+      .from(voiceCalls)
+      .where(
+        and(
+          eq(voiceCalls.tenantId, id),
+          ne(voiceCalls.provider, 'stub'),
+          isNotNull(voiceCalls.endedAt),
+          gte(voiceCalls.startedAt, from),
+          lte(voiceCalls.startedAt, to),
+        ),
+      );
+
+    const totalMinutes = row?.callCount ? row.totalMinutes : 0;
+    const includedMinutes = settings.monthlyMinuteQuota ?? 0;
+    const overageMinutes = Math.max(0, totalMinutes - includedMinutes);
+    const overageCostCents = overageMinutes * (settings.ratePerMinuteCents ?? 0);
+    const baseFeeCents = settings.monthlyBaseFeeCents ?? 0;
+
+    return {
+      from: from.toISOString(),
+      to: to.toISOString(),
+      callCount: row?.callCount ?? 0,
+      totalMinutes,
+      includedMinutes,
+      overageMinutes,
+      baseFeeCents,
+      ratePerMinuteCents: settings.ratePerMinuteCents ?? 0,
+      overageCostCents,
+      totalDueCents: baseFeeCents + overageCostCents,
+    };
   }
 
   async remove(id: string) {
