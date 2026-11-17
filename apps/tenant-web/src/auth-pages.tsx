@@ -19,10 +19,7 @@ function AuthShell({
           <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
             Z
           </div>
-          <div>
-            <div className="text-xs font-medium uppercase tracking-wide text-primary">ZUZO INSURE</div>
-            <div className="text-sm font-semibold text-foreground">ZuZo Vox</div>
-          </div>
+          <div className="text-sm font-semibold text-foreground">ZuZo Vox</div>
         </div>
         <h1 className="mb-1 font-heading text-xl font-bold text-foreground">{title}</h1>
         <p className="mb-5 text-sm text-muted-foreground">{subtitle}</p>

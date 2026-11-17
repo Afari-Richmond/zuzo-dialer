@@ -146,9 +146,6 @@ export function App() {
                 </div>
               )}
               <div className="hidden min-w-0 xl:block">
-                <div className="truncate text-xs font-medium uppercase tracking-wide text-primary-glow">
-                  {tenantName ?? ' '}
-                </div>
                 <div className="truncate text-sm font-semibold text-sidebar-foreground">
                   ZuZo Vox
                 </div>
