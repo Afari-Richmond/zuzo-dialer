@@ -274,7 +274,7 @@ export class OutreachDialService {
       direction: 'outbound',
       status: 'ringing',
       toNumber: normalized,
-      campaign: 'Instant dial (Dialout API)',
+      campaign: 'Instant dial',
       startedAt: new Date(),
     });
 
@@ -282,7 +282,7 @@ export class OutreachDialService {
       .insert(voiceOutboundAttempts)
       .values({
         tenantId,
-        campaign: 'Instant dial (Dialout API)',
+        campaign: 'Instant dial',
         phone: normalized,
         reason: reason ?? null,
         status: 'dialing',

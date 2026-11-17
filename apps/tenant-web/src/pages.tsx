@@ -299,8 +299,8 @@ export function UploadPage() {
               </Btn>
             </div>
             <p className="mt-1.5 text-xs text-muted-foreground">
-              Call now dials this phone/reason immediately — it skips the batch and the
-              scheduler entirely, good for a one-off test or urgent call.
+              Call now dials this phone/reason right away — good for a one-off test or an
+              urgent call.
             </p>
             {!!campaigns?.length && (
               <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs font-medium text-foreground">
@@ -310,8 +310,7 @@ export function UploadPage() {
                   onChange={(e) => setInstantDial(e.target.checked)}
                   className="size-3.5 cursor-pointer rounded border-input accent-primary"
                 />
-                Instant dial (bypass campaigns entirely and dial out immediately, ignores
-                the Campaign picker above)
+                Don't attach this call to a campaign
               </label>
             )}
 
@@ -547,7 +546,7 @@ function TargetsList({ campaignId }: { campaignId: string }) {
       {importResult && (
         <p className="mb-3 text-xs text-muted-foreground">
           Imported {importResult.accepted} target{importResult.accepted === 1 ? '' : 's'}
-          {importResult.rejected > 0 ? `, skipped ${importResult.rejected} (DNC or invalid)` : ''}.
+          {importResult.rejected > 0 ? `, skipped ${importResult.rejected} (on the do-not-call list or invalid)` : ''}.
         </p>
       )}
 
@@ -713,7 +712,7 @@ const NEXT_STEP_OPTIONS: { value: CampaignNextStep; label: string }[] = [
   { value: 'schedule_follow_up', label: 'Schedule follow-up' },
   { value: 'send_email_sms', label: 'Send email/SMS' },
   { value: 'escalate_to_agent', label: 'Escalate to agent' },
-  { value: 'add_to_dnc', label: 'Add to DNC' },
+  { value: 'add_to_dnc', label: 'Add to do-not-call list' },
   { value: 'no_action_needed', label: 'No action needed' },
 ];
 
