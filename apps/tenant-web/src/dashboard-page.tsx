@@ -180,7 +180,7 @@ export function DashboardPage({ onNavigate }: { onNavigate: (id: NavTarget) => v
           <h2 className="mb-4 text-sm font-semibold text-foreground">AI Agent</h2>
           {agent ? (
             <>
-              <div className="mb-1 font-medium text-foreground">{agent.name}</div>
+              <div className="mb-1 font-medium text-foreground">Outreach Agent</div>
               <div className="mb-4 text-sm text-muted-foreground">{agent.llm ?? 'No model selected'}</div>
             </>
           ) : (
