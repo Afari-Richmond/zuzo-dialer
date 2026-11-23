@@ -1,7 +1,11 @@
-import { ArrowRight, Megaphone, Phone, Sparkles, UploadCloud } from 'lucide-react';
+import { ArrowRight, AlertTriangle, Megaphone, Phone, Sparkles, UploadCloud } from 'lucide-react';
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
-import { aiAgentApi, api } from './api';
+import { aiAgentApi, api, billingApi } from './api';
 import { StatCard, StatusBadge, useLoad } from './ui';
+
+function formatUsd(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
 
 function isoDate(d: Date) {
   return d.toISOString().slice(0, 10);
@@ -40,6 +44,10 @@ export function DashboardPage({ onNavigate }: { onNavigate: (id: NavTarget) => v
     () => aiAgentApi.getCurrent().catch(() => null),
     'dashboard-agent',
   );
+  const { data: usage } = useLoad(
+    () => billingApi.getUsage().catch(() => null),
+    'dashboard-usage',
+  );
 
   const campaigns = campaignsData?.campaigns ?? [];
   const counts = { 'Not-started': 0, 'In-progress': 0, Locked: 0, Completed: 0 } as Record<string, number>;
@@ -53,6 +61,32 @@ export function DashboardPage({ onNavigate }: { onNavigate: (id: NavTarget) => v
       <p className="mb-6 text-sm text-muted-foreground">
         An at-a-glance view of everything running across your outreach account.
       </p>
+
+      {usage && usage.alertLevel !== 'none' && (
+        <div
+          className={`mb-6 flex items-start gap-3 rounded-xl border px-4 py-3 text-sm ${
+            usage.alertLevel === 'over'
+              ? 'border-destructive/30 bg-destructive/10 text-destructive'
+              : 'border-amber-300 bg-amber-50 text-amber-800'
+          }`}
+        >
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <div>
+            {usage.alertLevel === 'over' ? (
+              <>
+                You've used {usage.totalMinutes} of your {usage.includedMinutes} included minutes this
+                month — {usage.overageMinutes} minutes over, {formatUsd(usage.overageCostCents)} in
+                additional charges so far.
+              </>
+            ) : (
+              <>
+                You've used {usage.totalMinutes} of your {usage.includedMinutes} included minutes this
+                month. Additional usage is billed per minute.
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="mb-6 flex flex-wrap gap-3">
         <button

@@ -1,11 +1,12 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../../auth/auth.module';
+import { BillingModule } from '../../billing/billing.module';
 import { TelephonyCredentialsModule } from '../../tenant/telephony-credentials/telephony-credentials.module';
 import { TenantsController } from './tenants.controller';
 import { TenantsService } from './tenants.service';
 
 @Module({
-  imports: [AuthModule, TelephonyCredentialsModule],
+  imports: [AuthModule, BillingModule, TelephonyCredentialsModule],
   controllers: [TenantsController],
   providers: [TenantsService],
   exports: [TenantsService],

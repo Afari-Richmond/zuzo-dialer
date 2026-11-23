@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { ApiError, api, brandingApi, type TenantBranding } from './api';
-import { Btn, ErrorBanner, Field, Input, useLoad } from './ui';
+import { ApiError, api, billingApi, brandingApi, type TenantBranding } from './api';
+import { Btn, ErrorBanner, Field, Input, StatCard, useLoad } from './ui';
 import { applyBranding } from './apply-branding';
 import { THEME_PRESETS } from './theme-presets';
 
@@ -15,7 +15,7 @@ import { THEME_PRESETS } from './theme-presets';
  * bigger auth change.
  */
 
-const TABS = ['branding', 'security'] as const;
+const TABS = ['branding', 'billing', 'security'] as const;
 type Tab = (typeof TABS)[number];
 
 export function SettingsPage() {
@@ -36,7 +36,69 @@ export function SettingsPage() {
           </button>
         ))}
       </div>
-      {tab === 'branding' ? <BrandingSection /> : <SecuritySection />}
+      {tab === 'branding' ? <BrandingSection /> : tab === 'billing' ? <BillingSection /> : <SecuritySection />}
+    </div>
+  );
+}
+
+function formatUsd(cents: number): string {
+  return `$${(cents / 100).toFixed(2)}`;
+}
+
+function firstOfMonth(): string {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
+}
+
+function today(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function BillingSection() {
+  const [from, setFrom] = useState(firstOfMonth);
+  const [to, setTo] = useState(today);
+  const { data: usage, error, loading, reload } = useLoad(
+    () => billingApi.getUsage(from, to),
+    `billing-${from}-${to}`,
+  );
+
+  return (
+    <div className="card-surface p-6">
+      <h3 className="mb-1 text-sm font-semibold text-foreground">Usage &amp; billing</h3>
+      <p className="mb-4 text-sm text-muted-foreground">
+        Real call minutes for your account over the period below, billed against your plan.
+      </p>
+      <div className="mb-4 flex flex-wrap items-end gap-3">
+        <Field label="From">
+          <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+        </Field>
+        <Field label="To">
+          <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+        </Field>
+        <Btn kind="ghost" onClick={reload} disabled={loading}>
+          {loading ? 'Loading…' : 'Refresh'}
+        </Btn>
+      </div>
+      <ErrorBanner error={error} />
+      {usage && (
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard label="Calls" value={usage.callCount} color="gray" />
+          <StatCard label="Minutes used" value={usage.totalMinutes} color="blue" />
+          <StatCard label="Included" value={usage.includedMinutes} color="gray" />
+          <StatCard
+            label="Overage (min)"
+            value={usage.overageMinutes}
+            color={usage.overageMinutes > 0 ? 'red' : 'gray'}
+          />
+          <StatCard label="Base fee" value={formatUsd(usage.baseFeeCents)} color="gray" />
+          <StatCard
+            label="Overage cost"
+            value={formatUsd(usage.overageCostCents)}
+            color={usage.overageCostCents > 0 ? 'red' : 'gray'}
+          />
+          <StatCard label="Total due" value={formatUsd(usage.totalDueCents)} color="green" />
+        </div>
+      )}
     </div>
   );
 }

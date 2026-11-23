@@ -14,6 +14,7 @@ import { OutreachModule } from './modules/tenant/outreach/outreach.module';
 import { TeamModule } from './modules/tenant/team/team.module';
 import { BrandingModule } from './modules/tenant/branding/branding.module';
 import { AiAgentModule } from './modules/tenant/ai-agent/ai-agent.module';
+import { TenantBillingModule } from './modules/tenant/billing/billing.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { AiAgentModule } from './modules/tenant/ai-agent/ai-agent.module';
     TeamModule,
     BrandingModule,
     AiAgentModule,
+    TenantBillingModule,
   ],
 })
 export class AppModule {}

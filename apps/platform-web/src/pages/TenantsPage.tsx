@@ -74,7 +74,7 @@ export function TenantsPage() {
         <p className="p-8 text-center text-sm text-muted-foreground">No tenants yet.</p>
       )}
       {list && list.length > 0 && (
-        <Table headers={['', 'Name', 'Slug', 'Status', 'Plan', 'Created', '']}>
+        <Table headers={['', 'Name', 'Slug', 'Status', 'Plan', 'Usage', 'Created', '']}>
           {list.map((t) => (
             <TenantRow
               key={t.id}
@@ -132,6 +132,9 @@ function TenantRow({
           <StatusBadge status={tenant.status} />
         </td>
         <td className="px-5 py-3.5 text-muted-foreground">{PLAN_LABELS[adminPreview?.plan ?? 'trial']}</td>
+        <td className="px-5 py-3.5">
+          <UsageAlertBadge tenantId={tenant.id} />
+        </td>
         <td className="px-5 py-3.5 text-muted-foreground">{new Date(tenant.createdAt).toLocaleDateString()}</td>
         <td className="px-5 py-3.5 text-right">
           <div className="flex items-center justify-end gap-2">
@@ -146,7 +149,7 @@ function TenantRow({
       </tr>
       {expanded && (
         <tr className="border-t border-border bg-secondary/40">
-          <td colSpan={7} className="px-5 py-5">
+          <td colSpan={8} className="px-5 py-5">
             <div className="flex flex-col gap-6">
               <TenantAdminPanel tenantId={tenant.id} onSaved={onChanged} />
               <UsageBillingPanel tenantId={tenant.id} />
@@ -298,6 +301,32 @@ function today(): string {
  * date range (from voice_calls, excluding the 'stub' provider), combined
  * with the plan/rate/base-fee set above to compute what they actually owe.
  */
+/** Quiet, current-month usage check for the Tenants list row — lets an
+ * admin spot who's near or over quota without expanding every tenant. */
+function UsageAlertBadge({ tenantId }: { tenantId: string }) {
+  const [usage, setUsage] = useState<TenantUsage | null>(null);
+
+  useEffect(() => {
+    tenantsApi
+      .getUsage(tenantId)
+      .then(setUsage)
+      .catch(() => setUsage(null));
+  }, [tenantId]);
+
+  if (!usage || usage.alertLevel === 'none') {
+    return <span className="text-xs text-muted-foreground">—</span>;
+  }
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2.5 py-1 text-xs font-medium ${
+        usage.alertLevel === 'over' ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-700'
+      }`}
+    >
+      {usage.alertLevel === 'over' ? `Over by ${usage.overageMinutes}m` : 'Near quota'}
+    </span>
+  );
+}
+
 function UsageBillingPanel({ tenantId }: { tenantId: string }) {
   const [from, setFrom] = useState(firstOfMonth);
   const [to, setTo] = useState(today);
@@ -335,14 +364,35 @@ function UsageBillingPanel({ tenantId }: { tenantId: string }) {
         </Btn>
       </div>
       <ErrorBanner error={error} />
+      {usage && usage.alertLevel !== 'none' && (
+        <div
+          className={`mb-4 rounded-lg border px-3.5 py-2.5 text-sm ${
+            usage.alertLevel === 'over'
+              ? 'border-red-200 bg-red-50 text-red-700'
+              : 'border-amber-200 bg-amber-50 text-amber-700'
+          }`}
+        >
+          {usage.alertLevel === 'over'
+            ? `Over quota by ${usage.overageMinutes} min — ${formatUsd(usage.overageCostCents)} in overage charges this period.`
+            : `Approaching quota — ${usage.totalMinutes} of ${usage.includedMinutes} included minutes used.`}
+        </div>
+      )}
       {usage && (
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <StatCard label="Calls" value={usage.callCount} color="gray" />
           <StatCard label="Minutes used" value={usage.totalMinutes} color="blue" />
           <StatCard label="Included" value={usage.includedMinutes} color="gray" />
-          <StatCard label="Overage (min)" value={usage.overageMinutes} color="red" />
+          <StatCard
+            label="Overage (min)"
+            value={usage.overageMinutes}
+            color={usage.overageMinutes > 0 ? 'red' : 'gray'}
+          />
           <StatCard label="Base fee" value={formatUsd(usage.baseFeeCents)} color="gray" />
-          <StatCard label="Overage cost" value={formatUsd(usage.overageCostCents)} color="red" />
+          <StatCard
+            label="Overage cost"
+            value={formatUsd(usage.overageCostCents)}
+            color={usage.overageCostCents > 0 ? 'red' : 'gray'}
+          />
           <StatCard label="Total due" value={formatUsd(usage.totalDueCents)} color="green" />
         </div>
       )}

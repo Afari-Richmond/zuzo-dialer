@@ -72,6 +72,7 @@ export type TenantUsage = {
   ratePerMinuteCents: number;
   overageCostCents: number;
   totalDueCents: number;
+  alertLevel: 'none' | 'warning' | 'over';
 };
 
 export const tenants = {

@@ -482,6 +482,32 @@ export const brandingApi = {
     request<TenantBranding>('tenant/branding', '', { method: 'PUT', body: JSON.stringify(dto) }),
 };
 
+export type TenantUsage = {
+  from: string;
+  to: string;
+  callCount: number;
+  totalMinutes: number;
+  includedMinutes: number;
+  overageMinutes: number;
+  baseFeeCents: number;
+  ratePerMinuteCents: number;
+  overageCostCents: number;
+  totalDueCents: number;
+  alertLevel: 'none' | 'warning' | 'over';
+};
+
+export const billingApi = {
+  getUsage: (from?: string, to?: string) => {
+    const params = new URLSearchParams();
+    if (from) params.set('from', from);
+    if (to) params.set('to', to);
+    const qs = params.toString();
+    return request<{ usage: TenantUsage }>('tenant/billing', `/usage${qs ? `?${qs}` : ''}`).then(
+      (d) => d.usage,
+    );
+  },
+};
+
 export const credentialsApi = {
   list: () => request<{ credentials: TelephonyCredential[] }>('tenant/telephony-credentials', ''),
   upsert: (dto: { provider: string; label: string; credentials: Record<string, string> }) =>
