@@ -283,3 +283,8 @@ export class SetAiContextDto {
   @IsArray()
   documentIds?: string[];
 }
+
+export class SetMultilingualDto {
+  @IsBoolean()
+  enabled!: boolean;
+}

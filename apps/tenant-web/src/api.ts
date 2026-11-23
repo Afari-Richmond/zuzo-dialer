@@ -449,6 +449,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ phone, reason, liveHubCampaignId, instant }),
     }),
+  getMultilingual: () => request<{ enabled: boolean }>('outreach', '/multilingual'),
+  setMultilingual: (enabled: boolean) =>
+    request<{ enabled: boolean }>('outreach', '/multilingual', {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    }),
 };
 
 // --- telephony credentials + team: new multitenancy infra with no

@@ -40,6 +40,23 @@ const NOTIFICATION_MODE_PREAMBLE =
   'is absent from this call, ignore this paragraph entirely and follow the ' +
   'rest of your instructions normally.\n\n';
 
+// Opt-in per tenant (tenantAiAgentConfig.multilingualEnabled) — prepended
+// the same way as NOTIFICATION_MODE_PREAMBLE when on. Builds on whatever
+// default language the campaign's own prompt already specifies, so it
+// never hardcodes which language is "default" itself.
+const MULTILINGUAL_PREAMBLE =
+  'LANGUAGE SWITCHING: Default to whichever language your instructions below ' +
+  "specify. If the caller speaks to you in French at any point, switch to " +
+  'French immediately and continue the rest of the call in French, keeping ' +
+  'every fact you already know (whatever has already been confirmed, any ' +
+  'figures already given, which step of the process you are in) exactly as ' +
+  'it was — do not restart the conversation, do not re-ask anything already ' +
+  'established, and do not re-introduce yourself. If the caller then speaks ' +
+  'in your default language again, switch back the same way, again ' +
+  "preserving all context. Only switch when the caller's own words are " +
+  'clearly in that language — never switch on your own initiative, and ' +
+  'never mix languages within a single sentence.\n\n';
+
 const MAX_ROWS = 500;
 const PHONE_HEADERS = ['phone', 'phone number', 'mobile', 'mobile number', 'number'];
 const REASON_HEADERS = ['reason', 'notes', 'note', 'call reason', 'reason/notes'];
@@ -600,25 +617,91 @@ export class OutreachService {
     // empty save (e.g. a campaign that isn't using this feature) must never
     // blank out whatever the agent is actually running.
     if (dto.aiContext.trim()) {
-      const [config] = await this.db
-        .select({ agentId: tenantAiAgentConfig.agentId })
-        .from(tenantAiAgentConfig)
-        .where(eq(tenantAiAgentConfig.tenantId, tenantId))
-        .limit(1);
-      if (config?.agentId) {
-        const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
-        const agentId = config.agentId;
-        await liveHub.updateAgentPrompt(agentId, NOTIFICATION_MODE_PREAMBLE + dto.aiContext);
-        await liveHub.updateAgentTools(agentId, toolNames);
-        await liveHub.updateAgentDocuments(agentId, documentIds);
-        await this.db
-          .update(tenantAiAgentConfig)
-          .set({ lastAppliedCampaignId: campaignId })
-          .where(eq(tenantAiAgentConfig.tenantId, tenantId));
-      }
+      await this.pushPromptToLiveAgent(tenantId, campaignId, dto.aiContext, toolNames, documentIds);
     }
 
     return { aiContext: dto.aiContext, toolNames, documentIds };
+  }
+
+  /** Builds the fixed preambles (notification mode always, multilingual
+   * switching when the tenant has opted in) and pushes aiContext/toolNames/
+   * documentIds to whichever agent is live for this tenant — shared by
+   * setAiContext (saving a campaign) and setMultilingualSetting (flipping
+   * the toggle without re-saving a campaign). */
+  private async pushPromptToLiveAgent(
+    tenantId: string,
+    campaignId: string,
+    aiContext: string,
+    toolNames: string[],
+    documentIds: string[],
+  ) {
+    const [config] = await this.db
+      .select({ agentId: tenantAiAgentConfig.agentId, multilingualEnabled: tenantAiAgentConfig.multilingualEnabled })
+      .from(tenantAiAgentConfig)
+      .where(eq(tenantAiAgentConfig.tenantId, tenantId))
+      .limit(1);
+    if (!config?.agentId) return;
+
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const preamble = NOTIFICATION_MODE_PREAMBLE + (config.multilingualEnabled ? MULTILINGUAL_PREAMBLE : '');
+    await liveHub.updateAgentPrompt(config.agentId, preamble + aiContext);
+    await liveHub.updateAgentTools(config.agentId, toolNames);
+    await liveHub.updateAgentDocuments(config.agentId, documentIds);
+    await this.db
+      .update(tenantAiAgentConfig)
+      .set({ lastAppliedCampaignId: campaignId })
+      .where(eq(tenantAiAgentConfig.tenantId, tenantId));
+  }
+
+  async getMultilingualSetting(tenantId: string) {
+    const [config] = await this.db
+      .select({ multilingualEnabled: tenantAiAgentConfig.multilingualEnabled })
+      .from(tenantAiAgentConfig)
+      .where(eq(tenantAiAgentConfig.tenantId, tenantId))
+      .limit(1);
+    return { enabled: config?.multilingualEnabled ?? false };
+  }
+
+  /** Flips the toggle and, if a campaign is currently live, immediately
+   * re-pushes its stored prompt with the new preamble state — so the
+   * tenant doesn't have to re-save a campaign for this to take effect. */
+  async setMultilingualSetting(tenantId: string, enabled: boolean) {
+    await this.db
+      .insert(tenantAiAgentConfig)
+      .values({ tenantId, multilingualEnabled: enabled })
+      .onConflictDoUpdate({
+        target: tenantAiAgentConfig.tenantId,
+        set: { multilingualEnabled: enabled, updatedAt: new Date() },
+      });
+
+    const [config] = await this.db
+      .select({ lastAppliedCampaignId: tenantAiAgentConfig.lastAppliedCampaignId })
+      .from(tenantAiAgentConfig)
+      .where(eq(tenantAiAgentConfig.tenantId, tenantId))
+      .limit(1);
+    if (config?.lastAppliedCampaignId) {
+      const [report] = await this.db
+        .select()
+        .from(voiceCampaignReports)
+        .where(
+          and(
+            eq(voiceCampaignReports.tenantId, tenantId),
+            eq(voiceCampaignReports.liveHubCampaignId, config.lastAppliedCampaignId),
+          ),
+        )
+        .limit(1);
+      if (report?.aiContext?.trim()) {
+        await this.pushPromptToLiveAgent(
+          tenantId,
+          config.lastAppliedCampaignId,
+          report.aiContext,
+          (report.toolNames as string[]) ?? [],
+          (report.documentIds as string[]) ?? [],
+        );
+      }
+    }
+
+    return { enabled };
   }
 
   async uploadBatch(

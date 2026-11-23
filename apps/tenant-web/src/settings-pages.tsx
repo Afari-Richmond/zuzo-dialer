@@ -9,7 +9,7 @@ import {
   notificationsApi,
   type TenantBranding,
 } from './api';
-import { Btn, ErrorBanner, Field, Input, StatCard, Textarea, useLoad } from './ui';
+import { Btn, ErrorBanner, Field, Input, StatCard, Textarea, Toggle, useLoad } from './ui';
 import { applyBranding } from './apply-branding';
 import { THEME_PRESETS } from './theme-presets';
 
@@ -24,7 +24,7 @@ import { THEME_PRESETS } from './theme-presets';
  * bigger auth change.
  */
 
-const TABS = ['branding', 'billing', 'notifications', 'security'] as const;
+const TABS = ['branding', 'billing', 'notifications', 'ai agent', 'security'] as const;
 type Tab = (typeof TABS)[number];
 
 export function SettingsPage() {
@@ -51,6 +51,8 @@ export function SettingsPage() {
         <BillingSection />
       ) : tab === 'notifications' ? (
         <NotificationsSection />
+      ) : tab === 'ai agent' ? (
+        <AiAgentSection />
       ) : (
         <SecuritySection />
       )}
@@ -253,6 +255,57 @@ function NotificationsSection() {
           </p>
         )}
       </form>
+    </div>
+  );
+}
+
+function AiAgentSection() {
+  const { data, error, loading } = useLoad(() => api.getMultilingual(), 'ai-agent-multilingual');
+  const [enabled, setEnabled] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (data) setEnabled(data.enabled);
+  }, [data]);
+
+  function toggle(next: boolean) {
+    setEnabled(next);
+    setSaving(true);
+    setSaveError(null);
+    api
+      .setMultilingual(next)
+      .catch((err: Error) => {
+        setEnabled(!next);
+        setSaveError(err instanceof ApiError ? err.message : err.message);
+      })
+      .finally(() => setSaving(false));
+  }
+
+  return (
+    <div className="card-surface p-6">
+      <h3 className="mb-1 text-sm font-semibold text-foreground">AI agent behavior</h3>
+      <p className="mb-5 text-sm text-muted-foreground">
+        Settings that apply to every campaign, regardless of which one is currently active.
+      </p>
+      {loading && !data && <p className="text-sm text-muted-foreground">Loading…</p>}
+      <ErrorBanner error={error} />
+      {data && (
+        <div className="flex items-start justify-between gap-6 border-t border-border pt-5">
+          <div>
+            <p className="text-sm font-medium text-foreground">Multilingual switching (English / French)</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              When on, your agent follows a caller who switches to French mid-call and keeps
+              everything it already knew — the account details, where it was in the
+              conversation — then switches back to English the same way if they do. Off by
+              default; turn it on if your customers may speak French.
+            </p>
+          </div>
+          <Toggle checked={enabled} onChange={toggle} offLabel="Off" onLabel="On" />
+        </div>
+      )}
+      {saving && <p className="mt-3 text-xs text-muted-foreground">Saving…</p>}
+      <ErrorBanner error={saveError} />
     </div>
   );
 }

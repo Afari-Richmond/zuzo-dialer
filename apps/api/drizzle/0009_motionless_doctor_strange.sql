@@ -1,0 +1,1 @@
+ALTER TABLE "tenant_ai_agent_config" ADD COLUMN "multilingual_enabled" boolean DEFAULT false NOT NULL;

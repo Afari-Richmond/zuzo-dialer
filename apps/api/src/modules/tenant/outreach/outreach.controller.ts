@@ -30,6 +30,7 @@ import {
   OutreachAttemptsQueryDto,
   OutreachDncDto,
   SetAiContextDto,
+  SetMultilingualDto,
   SetRecommendationDto,
   UpdateCampaignDto,
   UploadBatchDto,
@@ -232,6 +233,16 @@ export class OutreachController {
   @Put('campaigns/:id/ai-context')
   setAiContext(@CurrentTenantActor() actor: TenantActor, @Param('id') id: string, @Body() dto: SetAiContextDto) {
     return this.outreach.setAiContext(actor.tenantId, id, dto);
+  }
+
+  @Get('multilingual')
+  getMultilingual(@CurrentTenantActor() actor: TenantActor) {
+    return this.outreach.getMultilingualSetting(actor.tenantId);
+  }
+
+  @Put('multilingual')
+  setMultilingual(@CurrentTenantActor() actor: TenantActor, @Body() dto: SetMultilingualDto) {
+    return this.outreach.setMultilingualSetting(actor.tenantId, dto.enabled);
   }
 
   @Post('call-now')

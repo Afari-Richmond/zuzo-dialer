@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
+import { boolean, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { tenants } from './tenants';
 
 // Which of the tenant's LiveHub AI Agents backs their outreach bot — chosen
@@ -16,6 +16,12 @@ export const tenantAiAgentConfig = pgTable('tenant_ai_agent_config', {
   // settings can be "live" at a time; this lets the UI warn when the
   // campaign being viewed isn't it.
   lastAppliedCampaignId: text('last_applied_campaign_id'),
+  // Opt-in — when on, a fixed instruction block is prepended to every
+  // campaign's prompt at push time (see MULTILINGUAL_PREAMBLE in
+  // OutreachService), telling the agent to follow the caller into French
+  // and back without losing context. Off by default since not every
+  // tenant's callers will ever speak French.
+  multilingualEnabled: boolean('multilingual_enabled').notNull().default(false),
   updatedAt: timestamp('updated_at', { withTimezone: true })
     .defaultNow()
     .notNull()
