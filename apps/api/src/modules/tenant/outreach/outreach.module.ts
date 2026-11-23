@@ -6,11 +6,12 @@ import { OutreachController } from './outreach.controller';
 import { OutreachService } from './outreach.service';
 import { OutreachDialService } from './outreach-dial.service';
 import { OutboundDialerService } from './outbound-dialer.service';
+import { ReconciliationSchedulerService } from './reconciliation-scheduler.service';
 
 @Module({
   imports: [AuthModule, VoiceModule],
   controllers: [OutreachController],
-  providers: [OutreachService, OutreachDialService, OutboundDialerService, IdempotencyInterceptor],
+  providers: [OutreachService, OutreachDialService, OutboundDialerService, ReconciliationSchedulerService, IdempotencyInterceptor],
   exports: [OutreachDialService, OutboundDialerService],
 })
 export class OutreachModule {}
