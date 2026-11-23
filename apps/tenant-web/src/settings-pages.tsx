@@ -79,7 +79,12 @@ function BillingSection() {
   const { data: usage, error, loading, reload } = useLoad(
     () => billingApi.getUsage(from, to),
     `billing-${from}-${to}`,
+    30_000,
   );
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  useEffect(() => {
+    if (usage) setLastUpdated(new Date());
+  }, [usage]);
 
   return (
     <div className="card-surface p-6">
@@ -97,6 +102,13 @@ function BillingSection() {
         <Btn kind="ghost" onClick={reload} disabled={loading}>
           {loading ? 'Loading…' : 'Refresh'}
         </Btn>
+        <div className="flex items-center gap-1.5 pb-2 text-xs text-muted-foreground">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          </span>
+          Live — updates every 30s{lastUpdated ? ` · updated ${lastUpdated.toLocaleTimeString()}` : ''}
+        </div>
       </div>
       <ErrorBanner error={error} />
       {usage && (

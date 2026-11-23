@@ -330,21 +330,15 @@ function UsageAlertBadge({ tenantId }: { tenantId: string }) {
 function UsageBillingPanel({ tenantId }: { tenantId: string }) {
   const [from, setFrom] = useState(firstOfMonth);
   const [to, setTo] = useState(today);
-  const [usage, setUsage] = useState<TenantUsage | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function load() {
-    setLoading(true);
-    setError(null);
-    tenantsApi
-      .getUsage(tenantId, from, to)
-      .then(setUsage)
-      .catch((err: Error) => setError(err.message))
-      .finally(() => setLoading(false));
-  }
-
-  useEffect(load, [tenantId]);
+  const { data: usage, error, loading, reload } = useLoad(
+    () => tenantsApi.getUsage(tenantId, from, to),
+    `tenant-usage-${tenantId}-${from}-${to}`,
+    30_000,
+  );
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
+  useEffect(() => {
+    if (usage) setLastUpdated(new Date());
+  }, [usage]);
 
   return (
     <div className="rounded-xl border border-border bg-card p-5">
@@ -359,9 +353,16 @@ function UsageBillingPanel({ tenantId }: { tenantId: string }) {
         <Field label="To">
           <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
         </Field>
-        <Btn kind="ghost" onClick={load} disabled={loading}>
+        <Btn kind="ghost" onClick={reload} disabled={loading}>
           {loading ? 'Loading…' : 'Refresh'}
         </Btn>
+        <div className="flex items-center gap-1.5 pb-2 text-xs text-muted-foreground">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          </span>
+          Live — updates every 30s{lastUpdated ? ` · updated ${lastUpdated.toLocaleTimeString()}` : ''}
+        </div>
       </div>
       <ErrorBanner error={error} />
       {usage && usage.alertLevel !== 'none' && (
