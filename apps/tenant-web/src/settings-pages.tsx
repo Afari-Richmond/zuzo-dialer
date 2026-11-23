@@ -1,6 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { ApiError, api, billingApi, brandingApi, type TenantBranding } from './api';
-import { Btn, ErrorBanner, Field, Input, StatCard, useLoad } from './ui';
+import {
+  API_BASE_URL,
+  ApiError,
+  api,
+  apiKeysApi,
+  billingApi,
+  brandingApi,
+  notificationsApi,
+  type TenantBranding,
+} from './api';
+import { Btn, ErrorBanner, Field, Input, StatCard, Textarea, useLoad } from './ui';
 import { applyBranding } from './apply-branding';
 import { THEME_PRESETS } from './theme-presets';
 
@@ -15,7 +24,7 @@ import { THEME_PRESETS } from './theme-presets';
  * bigger auth change.
  */
 
-const TABS = ['branding', 'billing', 'security'] as const;
+const TABS = ['branding', 'billing', 'notifications', 'security'] as const;
 type Tab = (typeof TABS)[number];
 
 export function SettingsPage() {
@@ -36,7 +45,15 @@ export function SettingsPage() {
           </button>
         ))}
       </div>
-      {tab === 'branding' ? <BrandingSection /> : tab === 'billing' ? <BillingSection /> : <SecuritySection />}
+      {tab === 'branding' ? (
+        <BrandingSection />
+      ) : tab === 'billing' ? (
+        <BillingSection />
+      ) : tab === 'notifications' ? (
+        <NotificationsSection />
+      ) : (
+        <SecuritySection />
+      )}
     </div>
   );
 }
@@ -99,6 +116,143 @@ function BillingSection() {
           <StatCard label="Total due" value={formatUsd(usage.totalDueCents)} color="green" />
         </div>
       )}
+    </div>
+  );
+}
+
+function NotificationsSection() {
+  const { data: keyStatus, reload: reloadKeyStatus } = useLoad(
+    () => apiKeysApi.getStatus(),
+    'api-key-status',
+  );
+  const [generatedKey, setGeneratedKey] = useState<string | null>(null);
+  const [generating, setGenerating] = useState(false);
+  const [genError, setGenError] = useState<string | null>(null);
+
+  const [testPhone, setTestPhone] = useState('');
+  const [testMessage, setTestMessage] = useState('');
+  const [sending, setSending] = useState(false);
+  const [sendResult, setSendResult] = useState<{ ok: boolean; text: string } | null>(null);
+
+  function generate() {
+    setGenerating(true);
+    setGenError(null);
+    apiKeysApi
+      .generate()
+      .then((key) => {
+        setGeneratedKey(key);
+        reloadKeyStatus();
+      })
+      .catch((err: Error) => setGenError(err instanceof ApiError ? err.message : err.message))
+      .finally(() => setGenerating(false));
+  }
+
+  function sendTest(e: FormEvent) {
+    e.preventDefault();
+    if (!testPhone.trim() || !testMessage.trim()) return;
+    setSending(true);
+    setSendResult(null);
+    notificationsApi
+      .sendTestCall(testPhone.trim(), testMessage.trim())
+      .then((res) => {
+        setSendResult(
+          res.dialed
+            ? { ok: true, text: `Calling ${testPhone} now with your message.` }
+            : { ok: false, text: `Not called — ${res.reason ?? res.error ?? 'unknown reason'}.` },
+        );
+      })
+      .catch((err: Error) => setSendResult({ ok: false, text: err.message }))
+      .finally(() => setSending(false));
+  }
+
+  return (
+    <div className="flex flex-col gap-6">
+      <div className="card-surface p-6">
+        <h3 className="mb-1 text-sm font-semibold text-foreground">Notification calls</h3>
+        <p className="mb-4 text-sm text-muted-foreground">
+          A one-way call that delivers a short message and hangs up — no back-and-forth
+          conversation. Good for a delivery ETA, an order-ready notice, a queue-turn call, a
+          reminder, anything where you just need to inform someone. Trigger it from your own
+          system using the API key below, or send a one-off test call here first.
+        </p>
+
+        <div className="mb-5 rounded-xl border border-border bg-secondary/40 p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="text-sm font-medium text-foreground">API key</span>
+            {keyStatus?.hasKey && (
+              <span className="text-xs text-muted-foreground">
+                {keyStatus.keyPrefix}••••••••
+              </span>
+            )}
+          </div>
+          {generatedKey ? (
+            <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+              <p className="mb-1 font-medium">Copy this now — it won't be shown again:</p>
+              <code className="block break-all rounded bg-white px-2 py-1.5 font-mono">
+                {generatedKey}
+              </code>
+            </div>
+          ) : (
+            <p className="mb-3 text-xs text-muted-foreground">
+              {keyStatus?.hasKey
+                ? `Generated ${new Date(keyStatus.createdAt!).toLocaleDateString()}${
+                    keyStatus.lastUsedAt
+                      ? ` · last used ${new Date(keyStatus.lastUsedAt).toLocaleDateString()}`
+                      : ' · never used yet'
+                  }.`
+                : 'No API key yet — generate one to let your own backend trigger notification calls.'}
+            </p>
+          )}
+          <Btn kind="ghost" onClick={generate} disabled={generating}>
+            {generating ? 'Generating…' : keyStatus?.hasKey ? 'Regenerate key' : 'Generate key'}
+          </Btn>
+          <ErrorBanner error={genError} />
+          <p className="mt-3 text-xs text-muted-foreground">
+            Call it like this from your own server:
+          </p>
+          <pre className="mt-1 overflow-x-auto rounded-lg bg-secondary p-3 text-xs text-muted-foreground">
+{`curl -X POST ${API_BASE_URL || window.location.origin}/api/v1/tenant/notifications/call \\
+  -H "Authorization: Bearer YOUR_API_KEY" \\
+  -H "Content-Type: application/json" \\
+  -d '{"phone":"0241234567","message":"Your order is ready for pickup."}'`}
+          </pre>
+        </div>
+      </div>
+
+      <form onSubmit={sendTest} className="card-surface grid gap-4 p-6">
+        <h3 className="text-sm font-semibold text-foreground">Send a test notification call</h3>
+        <Field label="Phone number">
+          <Input
+            value={testPhone}
+            onChange={(e) => setTestPhone(e.target.value)}
+            placeholder="0241234567"
+            required
+          />
+        </Field>
+        <Field label="Message">
+          <Textarea
+            rows={3}
+            value={testMessage}
+            onChange={(e) => setTestMessage(e.target.value)}
+            placeholder="e.g. Your rider is 5 minutes away."
+            required
+          />
+        </Field>
+        <div>
+          <Btn type="submit" disabled={sending}>
+            {sending ? 'Calling…' : 'Send test call'}
+          </Btn>
+        </div>
+        {sendResult && (
+          <p
+            className={`rounded-xl px-4 py-3 text-sm ${
+              sendResult.ok ? 'bg-green-50 text-green-700' : 'bg-destructive/10 text-destructive'
+            }`}
+          >
+            {sendResult.text}
+          </p>
+        )}
+      </form>
     </div>
   );
 }

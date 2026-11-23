@@ -15,6 +15,8 @@ import { TeamModule } from './modules/tenant/team/team.module';
 import { BrandingModule } from './modules/tenant/branding/branding.module';
 import { AiAgentModule } from './modules/tenant/ai-agent/ai-agent.module';
 import { TenantBillingModule } from './modules/tenant/billing/billing.module';
+import { TenantApiKeysModule } from './modules/tenant/api-keys/tenant-api-keys.module';
+import { NotificationsModule } from './modules/tenant/notifications/notifications.module';
 
 @Module({
   imports: [
@@ -34,6 +36,8 @@ import { TenantBillingModule } from './modules/tenant/billing/billing.module';
     BrandingModule,
     AiAgentModule,
     TenantBillingModule,
+    TenantApiKeysModule,
+    NotificationsModule,
   ],
 })
 export class AppModule {}

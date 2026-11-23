@@ -508,6 +508,30 @@ export const billingApi = {
   },
 };
 
+export type ApiKeyStatus = {
+  hasKey: boolean;
+  keyPrefix: string | null;
+  createdAt: string | null;
+  lastUsedAt: string | null;
+};
+
+export const apiKeysApi = {
+  getStatus: () => request<ApiKeyStatus>('tenant/api-keys', ''),
+  generate: () =>
+    request<{ apiKey: string }>('tenant/api-keys', '/generate', { method: 'POST' }).then(
+      (d) => d.apiKey,
+    ),
+};
+
+export const notificationsApi = {
+  sendTestCall: (phone: string, message: string) =>
+    request<{ dialed: boolean; reason?: string; error?: string }>(
+      'tenant/notifications',
+      '/test-call',
+      { method: 'POST', body: JSON.stringify({ phone, message }) },
+    ),
+};
+
 export const credentialsApi = {
   list: () => request<{ credentials: TelephonyCredential[] }>('tenant/telephony-credentials', ''),
   upsert: (dto: { provider: string; label: string; credentials: Record<string, string> }) =>

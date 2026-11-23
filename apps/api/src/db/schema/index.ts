@@ -10,6 +10,7 @@ export * from './voice-outbound-attempts';
 export * from './voice-campaign-outcomes';
 export * from './voice-campaign-reports';
 export * from './tenant-ai-agent-config';
+export * from './tenant-api-keys';
 export * from './voice-calls';
 export * from './idempotency-keys';
 export * from './relations';

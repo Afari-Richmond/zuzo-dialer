@@ -57,6 +57,13 @@
       "when": 1794573936273,
       "tag": "0007_even_omega_flight",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795419910488,
+      "tag": "0008_windy_moon_knight",
+      "breakpoints": true
     }
   ]
 }

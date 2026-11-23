@@ -24,6 +24,22 @@ import type {
   UpsertOutcomeDto,
 } from './dto/outreach.dto';
 
+// Prepended to every campaign's prompt before it's pushed live, so
+// notification calls (sendNotificationCall) work no matter which campaign a
+// tenant has most recently applied — the tenant never writes or sees this
+// themselves, and it never touches the aiContext text we store in our own
+// db, only what actually gets sent to the live agent.
+const NOTIFICATION_MODE_PREAMBLE =
+  'NOTIFICATION MODE (check this first, before anything else below): if this ' +
+  "call's metadata includes a field called notification_message, your entire " +
+  'job for this call is to deliver that exact text to the person naturally, ' +
+  'once they answer and acknowledge the call, then ask if they have any ' +
+  'questions about it. If they have none, thank them and end the call. Do ' +
+  'not continue into any of the instructions below, do not ask unrelated ' +
+  'questions, do not start a different conversation. If notification_message ' +
+  'is absent from this call, ignore this paragraph entirely and follow the ' +
+  'rest of your instructions normally.\n\n';
+
 const MAX_ROWS = 500;
 const PHONE_HEADERS = ['phone', 'phone number', 'mobile', 'mobile number', 'number'];
 const REASON_HEADERS = ['reason', 'notes', 'note', 'call reason', 'reason/notes'];
@@ -592,7 +608,7 @@ export class OutreachService {
       if (config?.agentId) {
         const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
         const agentId = config.agentId;
-        await liveHub.updateAgentPrompt(agentId, dto.aiContext);
+        await liveHub.updateAgentPrompt(agentId, NOTIFICATION_MODE_PREAMBLE + dto.aiContext);
         await liveHub.updateAgentTools(agentId, toolNames);
         await liveHub.updateAgentDocuments(agentId, documentIds);
         await this.db

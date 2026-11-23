@@ -294,6 +294,75 @@ export class OutreachDialService {
     return { dialed: true, callId, providerCallId: dialed.callId, conversationId: dialed.conversationId, attempt, reason };
   }
 
+  /**
+   * A one-way informational call — the agent delivers `message` verbatim and
+   * ends the call, rather than holding a conversation. Reuses the same
+   * dialout mechanics as dialoutNow; what makes it "notification mode" is
+   * the `notification_message` metadata field, which the tenant's agent
+   * prompt is expected to branch on (see the AI Agent setup docs). Meant to
+   * be triggered by the tenant's own backend via their API key — a delivery
+   * ETA, an order-ready notice, a queue-turn call, anything "inform, don't
+   * converse."
+   */
+  async sendNotificationCall(tenantId: string, phone: string, message: string) {
+    const normalized = normalizeGhanaPhone(phone);
+    if (!normalized) throw badRequest('INVALID_PHONE', 'Need a Ghana phone number');
+    if (await this.isDnc(tenantId, normalized)) {
+      return { dialed: false, reason: 'dnc' };
+    }
+    const liveHub = await this.adapterFactory.getLiveHubAdapterForTenant(tenantId);
+    const botId = liveHub.defaultBotId();
+    if (!botId) {
+      return { dialed: false, reason: 'no_bot_configured' };
+    }
+
+    const callId = `vc_${randomUUID()}`;
+    const webhookUrl = this.webhookUrlFor(tenantId);
+
+    let dialed: { callId: string; conversationId: string };
+    try {
+      dialed = await liveHub.dialout({
+        botName: botId,
+        target: normalized,
+        notifyUrl: webhookUrl,
+        metadata: { attemptId: callId, notification_message: message },
+        answerTimeoutSec: 30,
+        machineDetection: 'detect',
+        voicemailEndTimeoutSec: 15,
+      });
+    } catch (err) {
+      this.logger.warn(`Notification call failed for ${normalized}: ${(err as Error).message}`);
+      return { dialed: false, reason: 'provider_error', error: 'The call could not be placed' };
+    }
+
+    await this.db.insert(voiceCalls).values({
+      tenantId,
+      callId,
+      provider: liveHub.name,
+      providerCallId: dialed.callId,
+      direction: 'outbound',
+      status: 'ringing',
+      toNumber: normalized,
+      campaign: 'Notification call',
+      startedAt: new Date(),
+    });
+
+    const [attempt] = await this.db
+      .insert(voiceOutboundAttempts)
+      .values({
+        tenantId,
+        campaign: 'Notification call',
+        phone: normalized,
+        reason: message,
+        status: 'dialing',
+        startedAt: new Date(),
+        callId,
+      })
+      .returning();
+
+    return { dialed: true, callId, providerCallId: dialed.callId, conversationId: dialed.conversationId, attempt };
+  }
+
   listOutboundAttempts(tenantId: string, filter: { campaign?: string; status?: string } = {}) {
     const conditions = [eq(voiceOutboundAttempts.tenantId, tenantId)];
     if (filter.campaign) conditions.push(eq(voiceOutboundAttempts.campaign, filter.campaign));
